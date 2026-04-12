@@ -5,21 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>상평초 공수전분교장 e-가정통신문</title>
   
+  <!-- 1. Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
+  <!-- 2. React & ReactDOM -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   
+  <!-- 3. Babel -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+  <!-- 4. Lucide 아이콘 -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
+  <!-- 5. Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
+  <!-- 6. SheetJS (엑셀 업로드/다운로드용) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
   <style>
-    /* 인쇄용 설정 */
     @media print { 
       body { background: white !important; } 
       .print\:hidden { display: none !important; } 
@@ -27,6 +34,9 @@
       .print\:shadow-none { box-shadow: none !important; } 
       .print\:p-0 { padding: 0 !important; } 
     }
+    /* 스크롤바 숨기기 (모양은 유지) */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans antialiased">
@@ -36,7 +46,7 @@
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    // --- 1. Firebase 초기화 (Compat 방식) ---
+    // --- 1. Firebase 초기화 ---
     const firebaseConfig = {
       apiKey: "AIzaSyA4bDW9tzSINZQ1JwEO7XRm4ZQWsoJiFtM",
       authDomain: "e-form-f81f7.firebaseapp.com",
@@ -53,14 +63,13 @@
     const db = firebase.firestore();
     const appId = 'sangpyeong-consent-app';
 
-    // --- 2. 아이콘 컴포넌트 헬퍼 ---
-    // Lucide 아이콘을 React에서 쓸 수 있게 변환해주는 함수
+    // --- 2. 아이콘 컴포넌트 ---
     const Icon = ({ name, size = 24, className = "" }) => {
       const ref = useRef();
       useEffect(() => {
         if (ref.current) {
           ref.current.innerHTML = '';
-          const iconNode = lucide.createIcons({
+          lucide.createIcons({
             icons: { [name]: lucide.icons[name] },
             nameAttr: 'data-lucide',
             attrs: { width: size, height: size, class: className }
@@ -104,6 +113,12 @@
       return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     };
 
+    const displayStatus = (status) => {
+      if (status === 'agree') return '동의';
+      if (status === 'disagree') return '미동의';
+      return status; // 참여, 불참 등 텍스트 그대로 반환
+    };
+
     // --- 4. 공통 컴포넌트 ---
     const Toast = ({ message, type, onClose }) => {
       useEffect(() => {
@@ -112,9 +127,9 @@
       }, [onClose]);
 
       return (
-        <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 z-[100] border ${type === 'error' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-slate-800 text-white border-slate-700'}`}>
+        <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-[100] border font-bold ${type === 'error' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-slate-800 text-white border-slate-700'}`}>
           {type === 'error' ? <Icon name="AlertCircle" size={20} /> : <Icon name="CheckCircle2" size={20} className="text-green-400" />}
-          <span className="font-medium">{message}</span>
+          <span>{message}</span>
         </div>
       );
     };
@@ -200,8 +215,9 @@
       
       const [studentGrade, setStudentGrade] = useState('');
       const [studentName, setStudentName] = useState('');
+      const [parentRelation, setParentRelation] = useState('부'); // 관계 추가
       const [parentName, setParentName] = useState('');
-      const [consentStatus, setConsentStatus] = useState('agree');
+      const [consentStatus, setConsentStatus] = useState('');
       const [signatureData, setSignatureData] = useState(null);
       const [isSubmitting, setIsSubmitting] = useState(false);
       const [submitted, setSubmitted] = useState(false);
@@ -212,7 +228,12 @@
             const docRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('forms').doc(formId);
             const docSnap = await docRef.get();
             if (docSnap.exists) {
-              setForm({ id: docSnap.id, ...docSnap.data() });
+              const formData = { id: docSnap.id, ...docSnap.data() };
+              setForm(formData);
+              // 초기 선택값 세팅
+              if(formData.responseType === 'participate') setConsentStatus('참여함');
+              else if(formData.responseType === 'custom') setConsentStatus(formData.customOpt1);
+              else setConsentStatus('동의함');
             } else {
               onToast('안내장을 찾을 수 없습니다.', 'error');
             }
@@ -231,7 +252,7 @@
         setIsSubmitting(true);
         try {
           await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('submissions').add({
-            formId, studentGrade, studentName, parentName, consentStatus, signatureData, createdAt: Date.now()
+            formId, studentGrade, studentName, parentName, parentRelation, consentStatus, signatureData, createdAt: Date.now()
           });
           setSubmitted(true); window.scrollTo(0, 0);
         } catch (error) { onToast('제출 실패', 'error'); setIsSubmitting(false); }
@@ -239,6 +260,19 @@
 
       if (loading) return <div className="min-h-screen bg-slate-50 flex justify-center items-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div></div>;
       
+      // 마감된 폼 처리
+      if (form && form.isClosed) {
+        return (
+          <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
+            <div className="bg-white p-10 rounded-3xl shadow-xl max-w-sm w-full text-center">
+              <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6"><Icon name="AlertCircle" size={40} className="text-red-500" /></div>
+              <h2 className="text-2xl font-black text-slate-800 mb-2">기한 마감</h2>
+              <p className="text-slate-500 font-medium">제출 기한이 마감된 안내장입니다.<br/>문의사항은 담임 선생님께 연락 바랍니다.</p>
+            </div>
+          </div>
+        )
+      }
+
       if (submitted) return (
         <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
           <div className="bg-white p-10 rounded-3xl shadow-xl max-w-sm w-full text-center">
@@ -247,14 +281,18 @@
             <p className="text-slate-500 font-medium mb-8">안전하게 학교로 전송되었습니다.<br/>감사합니다.</p>
             <div className="bg-slate-50 p-5 rounded-2xl text-left text-sm font-bold text-slate-700 border border-slate-200">
               <div className="flex justify-between mb-3"><span className="text-slate-400">학생</span> <span>{studentGrade}학년 {studentName}</span></div>
-              <div className="flex justify-between mb-3"><span className="text-slate-400">학부모</span> <span>{parentName}</span></div>
-              <div className="flex justify-between"><span className="text-slate-400">결과</span> <span className={consentStatus==='agree'?'text-blue-600':'text-red-600'}>{consentStatus==='agree'?'동의':'미동의'}</span></div>
+              <div className="flex justify-between mb-3"><span className="text-slate-400">학부모</span> <span>{parentRelation} {parentName}</span></div>
+              <div className="flex justify-between"><span className="text-slate-400">결과</span> <span className="text-blue-600">{consentStatus}</span></div>
             </div>
           </div>
         </div>
       );
 
       if(!form) return <div className="text-center mt-20 text-red-500 font-bold">잘못된 링크입니다.</div>;
+
+      // 응답 옵션 텍스트 결정
+      const opt1 = form.responseType === 'participate' ? '참여함' : form.responseType === 'custom' ? form.customOpt1 : '동의함';
+      const opt2 = form.responseType === 'participate' ? '불참' : form.responseType === 'custom' ? form.customOpt2 : '미동의';
 
       return (
         <div className="min-h-screen bg-slate-100 font-sans pb-20">
@@ -264,21 +302,21 @@
 
           <main className="max-w-xl mx-auto p-4 space-y-6 mt-4">
             <section className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="p-6 bg-slate-800 text-white text-center"><h2 className="text-2xl font-black leading-snug">{form?.title}</h2></div>
-              {form?.imageData && <div className="p-4 bg-slate-50 border-t"><img src={form.imageData} alt="안내장" className="w-full rounded-xl border border-slate-200 shadow-sm" /></div>}
+              <div className="p-6 bg-slate-800 text-white text-center"><h2 className="text-2xl font-black leading-snug">{form.title}</h2></div>
+              {form.imageData && <div className="p-4 bg-slate-50 border-t"><img src={form.imageData} alt="안내장" className="w-full rounded-xl border border-slate-200 shadow-sm" /></div>}
             </section>
 
             <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8 space-y-10">
               <div>
-                <h3 className="text-xl font-black text-slate-800 mb-5">1. 동의 여부</h3>
+                <h3 className="text-xl font-black text-slate-800 mb-5">1. 회신 내용 선택</h3>
                 <div className="flex gap-4">
-                  <label className={`flex-1 flex flex-col items-center p-5 rounded-2xl border-2 cursor-pointer transition-all ${consentStatus === 'agree' ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-inner' : 'border-slate-200 text-slate-400'}`}>
-                    <input type="radio" name="consent" className="hidden" checked={consentStatus === 'agree'} onChange={() => setConsentStatus('agree')} />
-                    <span className="text-xl font-black mb-1">동의함</span>
+                  <label className={`flex-1 flex flex-col items-center p-5 rounded-2xl border-2 cursor-pointer transition-all ${consentStatus === opt1 ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-inner' : 'border-slate-200 text-slate-400'}`}>
+                    <input type="radio" name="consent" className="hidden" checked={consentStatus === opt1} onChange={() => setConsentStatus(opt1)} />
+                    <span className="text-xl font-black mb-1">{opt1}</span>
                   </label>
-                  <label className={`flex-1 flex flex-col items-center p-5 rounded-2xl border-2 cursor-pointer transition-all ${consentStatus === 'disagree' ? 'border-red-500 bg-red-50 text-red-800 shadow-inner' : 'border-slate-200 text-slate-400'}`}>
-                    <input type="radio" name="consent" className="hidden" checked={consentStatus === 'disagree'} onChange={() => setConsentStatus('disagree')} />
-                    <span className="text-xl font-black mb-1">미동의</span>
+                  <label className={`flex-1 flex flex-col items-center p-5 rounded-2xl border-2 cursor-pointer transition-all ${consentStatus === opt2 ? 'border-red-500 bg-red-50 text-red-800 shadow-inner' : 'border-slate-200 text-slate-400'}`}>
+                    <input type="radio" name="consent" className="hidden" checked={consentStatus === opt2} onChange={() => setConsentStatus(opt2)} />
+                    <span className="text-xl font-black mb-1">{opt2}</span>
                   </label>
                 </div>
               </div>
@@ -286,13 +324,19 @@
               <div>
                 <h3 className="text-xl font-black text-slate-800 mb-5">2. 인적사항 입력</h3>
                 <div className="space-y-4">
-                  <div className="flex gap-4">
-                    <select value={studentGrade} onChange={e=>setStudentGrade(e.target.value)} className="w-1/3 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 font-bold text-lg outline-none appearance-none">
+                  <div className="flex gap-3">
+                    <select value={studentGrade} onChange={e=>setStudentGrade(e.target.value)} className="w-[100px] px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 font-bold text-lg outline-none appearance-none shrink-0">
                       <option value="">학년</option>{[1,2,3,4,5,6].map(g => <option key={g} value={g}>{g}학년</option>)}
                     </select>
-                    <input type="text" value={studentName} onChange={e=>setStudentName(e.target.value)} placeholder="학생 이름" className="w-2/3 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 font-bold text-lg outline-none" />
+                    <input type="text" value={studentName} onChange={e=>setStudentName(e.target.value)} placeholder="학생 이름" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 font-bold text-lg outline-none" />
                   </div>
-                  <input type="text" value={parentName} onChange={e=>setParentName(e.target.value)} placeholder="학부모 성명 (예: 홍길동 부)" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 font-bold text-lg outline-none" />
+                  
+                  <div className="flex gap-3">
+                    <select value={parentRelation} onChange={e=>setParentRelation(e.target.value)} className="w-[100px] px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 font-bold text-lg outline-none appearance-none shrink-0">
+                      {['부', '모', '조부', '조모', '외조부', '외조모', '친척', '후견인', '보호자'].map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                    <input type="text" value={parentName} onChange={e=>setParentName(e.target.value)} placeholder="성명 입력" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 font-bold text-lg outline-none" />
+                  </div>
                 </div>
               </div>
 
@@ -311,24 +355,23 @@
       );
     };
 
-    // --- 6. 교사 관리자 화면 (결과 탭 위주로 요약) ---
-    // (파일이 너무 길어지는 것을 방지하기 위해 핵심 기능인 '등록'과 '결과보기' 위주로 구성)
+    // --- 6. 교사 관리자 화면 ---
     const TeacherView = ({ user, onToast }) => {
       const [currentTab, setCurrentTab] = useState('forms');
       const [forms, setForms] = useState([]);
       const [submissions, setSubmissions] = useState([]);
-      
-      const [title, setTitle] = useState('');
-      const [image, setImage] = useState(null);
-      const [isUploading, setIsUploading] = useState(false);
+      const [contacts, setContacts] = useState([]);
+      const [settings, setSettings] = useState({ smsApiKey: '', smsApiSecret: '', senderPhone: '033-672-4268' });
 
+      // 등록/결과확인 연동용 State
       const [selectedFormId, setSelectedFormId] = useState('');
-      const [viewMode, setViewMode] = useState('status');
-      const [selectedSub, setSelectedSub] = useState(null);
+      const [viewMode, setViewMode] = useState('status'); // 결과보기 모드 (목록/원본)
 
       useEffect(() => {
         const formsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('forms');
         const subsRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('submissions');
+        const contactsRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('contacts');
+        const settingsRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('settings').doc('config');
 
         const unsubForms = formsRef.onSnapshot(snap => {
           const fetchedForms = snap.docs.map(doc => ({id: doc.id, ...doc.data()})).sort((a,b)=>b.createdAt-a.createdAt);
@@ -338,9 +381,78 @@
         const unsubSubs = subsRef.onSnapshot(snap => {
           setSubmissions(snap.docs.map(doc => ({id: doc.id, ...doc.data()})).sort((a,b)=>b.createdAt-a.createdAt));
         });
+        const unsubContacts = contactsRef.onSnapshot(snap => {
+          setContacts(snap.docs.map(doc => ({id: doc.id, ...doc.data()})));
+        });
+        
+        settingsRef.get().then(doc => { if(doc.exists) setSettings(doc.data()); });
 
-        return () => { unsubForms(); unsubSubs(); };
+        return () => { unsubForms(); unsubSubs(); unsubContacts(); };
       }, []);
+
+      // 탭 이동 헬퍼
+      const goToResults = (formId, mode = 'status') => {
+        setSelectedFormId(formId);
+        setViewMode(mode);
+        setCurrentTab('results');
+      }
+
+      // 메뉴 네비게이션 버튼 렌더러
+      const NavButton = ({ id, icon, label }) => {
+        const isActive = currentTab === id;
+        return (
+          <button 
+            onClick={() => setCurrentTab(id)} 
+            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all font-bold text-sm ${isActive ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            <Icon name={icon} size={20} className={isActive ? 'text-blue-600' : 'text-slate-400'}/> {label}
+          </button>
+        )
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
+          <aside className="w-full md:w-64 bg-white border-r border-slate-200 shrink-0 z-10 print:hidden flex flex-col">
+            <div className="p-6 border-b border-slate-100">
+              <div className="font-black text-xl tracking-tight flex items-center gap-2 text-blue-800">
+                <Icon name="FileSignature" size={24} className="text-blue-600"/> e-동의서 관리
+              </div>
+              <div className="text-xs text-slate-500 bg-slate-100 p-2 rounded-lg font-medium mt-3">상평초 공수전분교장</div>
+            </div>
+            <nav className="p-4 space-y-1 flex-1 overflow-y-auto">
+              <NavButton id="forms" icon="FileText" label="안내장 등록/발송" />
+              <NavButton id="contacts" icon="Users" label="학부모 주소록" />
+              <NavButton id="results" icon="CheckSquare" label="취합 결과 확인" />
+              <NavButton id="settings" icon="Settings" label="환경설정 (문자발송)" />
+            </nav>
+            <div className="p-4 mt-auto border-t border-slate-100">
+              <button onClick={() => auth.signOut()} className="w-full flex items-center justify-center gap-2 text-slate-500 bg-slate-50 hover:bg-red-50 hover:text-red-600 px-4 py-3 rounded-xl text-sm font-bold transition-colors">
+                <Icon name="LogOut" size={16}/> 로그아웃
+              </button>
+            </div>
+          </aside>
+
+          <main className="flex-1 p-6 md:p-10 overflow-y-auto h-screen">
+            {currentTab === 'forms' && <TeacherFormsTab db={db} appId={appId} user={user} forms={forms} onToast={onToast} goToResults={goToResults} />}
+            {currentTab === 'contacts' && <TeacherContactsTab db={db} appId={appId} user={user} contacts={contacts} onToast={onToast} />}
+            {currentTab === 'results' && <TeacherResultsTab forms={forms} submissions={submissions} selectedFormId={selectedFormId} setSelectedFormId={setSelectedFormId} viewMode={viewMode} setViewMode={setViewMode} />}
+            {currentTab === 'settings' && <TeacherSettingsTab db={db} appId={appId} user={user} settings={settings} onToast={onToast} />}
+          </main>
+        </div>
+      );
+    };
+
+    // --- 하위 탭: 안내장 등록/목록 ---
+    const TeacherFormsTab = ({ db, appId, user, forms, onToast, goToResults }) => {
+      const [title, setTitle] = useState('');
+      const [image, setImage] = useState(null);
+      const [isUploading, setIsUploading] = useState(false);
+      
+      const [responseType, setResponseType] = useState('agree'); // agree, participate, custom
+      const [customOpt1, setCustomOpt1] = useState('');
+      const [customOpt2, setCustomOpt2] = useState('');
+
+      const [previewImage, setPreviewImage] = useState(null); // 안내장 원본 보기 모달용
 
       const handleImageChange = async (e) => {
         const file = e.target.files[0];
@@ -351,19 +463,27 @@
 
       const handleSaveForm = async () => {
         if (!title.trim() || !image) return onToast('제목과 이미지를 모두 입력해주세요.', 'error');
+        if (responseType === 'custom' && (!customOpt1.trim() || !customOpt2.trim())) return onToast('직접 입력 옵션명을 기입해주세요.', 'error');
         setIsUploading(true);
         try {
           await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('forms').add({
-            title, imageData: image, teacherUid: user.uid, createdAt: Date.now()
+            title, imageData: image, teacherUid: user.uid, createdAt: Date.now(),
+            responseType, customOpt1, customOpt2, isClosed: false
           });
           onToast('안내장이 등록되었습니다.');
-          setTitle(''); setImage(null);
+          setTitle(''); setImage(null); setResponseType('agree'); setCustomOpt1(''); setCustomOpt2('');
         } catch (error) { onToast('등록 오류', 'error'); }
         setIsUploading(false);
       };
 
-      const currentForm = forms.find(f => f.id === selectedFormId);
-      const currentSubs = submissions.filter(s => s.formId === selectedFormId);
+      const toggleStatus = async (formId, currentStatus) => {
+        try {
+          await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('forms').doc(formId).update({
+            isClosed: !currentStatus
+          });
+          onToast(currentStatus ? '안내장이 다시 오픈되었습니다.' : '안내장이 마감처리 되었습니다.');
+        } catch (e) { onToast('상태 변경 오류', 'error'); }
+      };
 
       const copyLink = (formId) => {
         const link = `${window.location.origin}${window.location.pathname}?formId=${formId}`;
@@ -373,151 +493,358 @@
       };
 
       return (
-        <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
-          <aside className="w-full md:w-64 bg-slate-800 text-white shrink-0 shadow-xl z-10 print:hidden">
-            <div className="p-6 border-b border-slate-700">
-              <div className="font-black text-xl tracking-tight flex items-center gap-2">
-                <Icon name="FileSignature" size={20} className="text-blue-400"/> e-동의서
+        <div className="max-w-4xl mx-auto space-y-10 animate-fade-in-up pb-20">
+          <section className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8">
+            <h2 className="text-xl font-bold text-slate-800 mb-6">새 안내장 등록</h2>
+            <div className="space-y-6">
+              <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="안내장 제목 입력" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none text-lg" />
+              
+              <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl">
+                <p className="text-sm font-bold text-slate-700 mb-3">응답 선택지 유형</p>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer font-bold"><input type="radio" checked={responseType==='agree'} onChange={()=>setResponseType('agree')} className="w-4 h-4"/> 동의 / 미동의</label>
+                  <label className="flex items-center gap-2 cursor-pointer font-bold"><input type="radio" checked={responseType==='participate'} onChange={()=>setResponseType('participate')} className="w-4 h-4"/> 참여 / 불참</label>
+                  <label className="flex items-center gap-2 cursor-pointer font-bold"><input type="radio" checked={responseType==='custom'} onChange={()=>setResponseType('custom')} className="w-4 h-4"/> 직접입력</label>
+                </div>
+                {responseType === 'custom' && (
+                  <div className="flex gap-3 mt-4">
+                    <input type="text" value={customOpt1} onChange={e=>setCustomOpt1(e.target.value)} placeholder="옵션 1 (예: 구입함)" className="flex-1 px-4 py-2 border rounded-lg outline-none focus:border-blue-500"/>
+                    <input type="text" value={customOpt2} onChange={e=>setCustomOpt2(e.target.value)} placeholder="옵션 2 (예: 구입안함)" className="flex-1 px-4 py-2 border rounded-lg outline-none focus:border-blue-500"/>
+                  </div>
+                )}
               </div>
-              <div className="text-xs text-slate-400 mt-2">상평초 공수전분교장</div>
-            </div>
-            <nav className="p-4 space-y-2">
-              <button onClick={() => setCurrentTab('forms')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors font-bold ${currentTab==='forms'?'bg-blue-600 text-white':'text-slate-300 hover:bg-slate-700'}`}>
-                <Icon name="Plus" size={18}/> 안내장 등록
-              </button>
-              <button onClick={() => setCurrentTab('results')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors font-bold ${currentTab==='results'?'bg-blue-600 text-white':'text-slate-300 hover:bg-slate-700'}`}>
-                <Icon name="CheckSquare" size={18}/> 결과 확인
-              </button>
-            </nav>
-            <div className="p-4 mt-auto">
-              <button onClick={() => auth.signOut()} className="w-full flex items-center gap-2 text-slate-400 hover:text-white px-4 py-3 text-sm font-bold transition-colors">
-                <Icon name="LogOut" size={16}/> 로그아웃
-              </button>
-            </div>
-          </aside>
 
-          <main className="flex-1 p-6 md:p-10 overflow-y-auto">
-            {currentTab === 'forms' && (
-              <div className="max-w-3xl mx-auto space-y-8 animate-fade-in-up">
-                <section className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8">
-                  <h2 className="text-xl font-bold text-slate-800 mb-6">새 안내장 등록</h2>
-                  <div className="space-y-4">
-                    <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="안내장 제목 입력" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none" />
-                    <div>
-                      <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-blue-50">
-                        <span className="text-sm font-bold text-slate-500">클릭하여 안내장 이미지(JPG) 첨부</span>
-                        <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
-                      </label>
-                      {image && <img src={image} className="h-32 mt-4 rounded-lg border shadow-sm" alt="미리보기"/>}
+              <div>
+                <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-blue-50 transition-colors">
+                  <span className="text-sm font-bold text-slate-500 flex items-center gap-2"><Icon name="FileText" size={20}/> 클릭하여 안내장 이미지(JPG) 첨부</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                </label>
+                {image && <div className="mt-4 inline-block relative"><img src={image} className="h-32 rounded-lg border shadow-sm" alt="미리보기"/><button onClick={()=>setImage(null)} className="absolute -top-2 -right-2 bg-slate-800 text-white rounded-full p-1"><Icon name="Trash2" size={14}/></button></div>}
+              </div>
+              <button onClick={handleSaveForm} disabled={isUploading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-md transition-all text-lg">
+                {isUploading ? '저장 중...' : '안내장 등록하기'}
+              </button>
+            </div>
+          </section>
+
+          <section className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-slate-100 bg-slate-50">
+               <h2 className="text-xl font-bold text-slate-800">등록된 안내장 목록</h2>
+            </div>
+            <div className="max-h-[500px] overflow-y-auto no-scrollbar p-2">
+              {forms.length === 0 && <div className="p-10 text-center text-slate-400 font-bold">등록된 안내장이 없습니다.</div>}
+              {forms.map(form => (
+                <div key={form.id} className="flex flex-col md:flex-row items-center justify-between p-4 border-b border-slate-100 hover:bg-slate-50 transition-colors gap-4">
+                  <div className="flex-1 cursor-pointer w-full" onClick={() => setPreviewImage(form.imageData)}>
+                    <h3 className="font-bold text-lg text-slate-800 hover:text-blue-600 line-clamp-1 break-all">{form.title}</h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-slate-400 font-mono">{formatDate(form.createdAt)}</span>
+                      {form.isClosed && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">마감됨</span>}
                     </div>
-                    <button onClick={handleSaveForm} disabled={isUploading} className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl mt-4">
-                      {isUploading ? '저장 중...' : '안내장 등록하기'}
+                  </div>
+                  <div className="flex gap-2 shrink-0 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+                    <button onClick={() => toggleStatus(form.id, form.isClosed)} className={`px-4 py-2 text-sm font-bold rounded-lg border transition-colors whitespace-nowrap ${form.isClosed ? 'border-green-200 text-green-700 hover:bg-green-50' : 'border-red-200 text-red-600 hover:bg-red-50'}`}>
+                      {form.isClosed ? '다시오픈' : '마감처리'}
+                    </button>
+                    <button onClick={() => copyLink(form.id)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap">
+                      <Icon name="Copy" size={16}/> 공유링크
+                    </button>
+                    <button onClick={() => goToResults(form.id, 'status')} className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-bold rounded-lg whitespace-nowrap transition-colors">
+                      결과확인
+                    </button>
+                    <button onClick={() => goToResults(form.id, 'original')} className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold rounded-lg whitespace-nowrap transition-colors">
+                      원본확인
                     </button>
                   </div>
-                </section>
-
-                <section>
-                  <h2 className="text-xl font-bold text-slate-800 mb-4">등록된 안내장 목록</h2>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {forms.map(form => (
-                      <div key={form.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                        <h3 className="font-bold text-lg text-slate-800 mb-1">{form.title}</h3>
-                        <p className="text-xs text-slate-400 mb-4">{formatDate(form.createdAt)}</p>
-                        <button onClick={() => copyLink(form.id)} className="w-full bg-slate-100 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-200 flex items-center justify-center gap-2">
-                          <Icon name="Copy" size={16}/> 카톡 공유용 링크 복사
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              </div>
-            )}
-
-            {currentTab === 'results' && (
-              <div className="max-w-5xl mx-auto animate-fade-in-up">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-black text-slate-800">제출 결과 확인</h2>
-                  <div className="flex bg-slate-200 p-1.5 rounded-xl border border-slate-300 print:hidden">
-                    <button onClick={() => setViewMode('status')} className={`px-4 py-2 rounded-lg text-sm font-bold ${viewMode === 'status' ? 'bg-white shadow-md text-blue-700' : 'text-slate-500'}`}>목록 보기</button>
-                    <button onClick={() => setViewMode('original')} className={`px-4 py-2 rounded-lg text-sm font-bold ${viewMode === 'original' ? 'bg-white shadow-md text-blue-700' : 'text-slate-500'}`}>인쇄/원본 보기</button>
-                  </div>
                 </div>
+              ))}
+            </div>
+          </section>
 
-                <select value={selectedFormId} onChange={e => {setSelectedFormId(e.target.value); setSelectedSub(null);}} className="w-full max-w-md px-5 py-4 mb-6 bg-white border-2 border-blue-100 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold text-slate-700 shadow-sm appearance-none print:hidden">
-                  {forms.length === 0 && <option value="">등록된 안내장이 없습니다.</option>}
-                  {forms.map(f => <option key={f.id} value={f.id}>{f.title} (총 {submissions.filter(s=>s.formId === f.id).length}건)</option>)}
-                </select>
+          {/* 원본 이미지 보기 모달 */}
+          {previewImage && (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[200] p-4" onClick={()=>setPreviewImage(null)}>
+               <div className="relative max-w-2xl w-full max-h-[90vh] overflow-y-auto bg-white rounded-xl p-2" onClick={e=>e.stopPropagation()}>
+                  <button onClick={()=>setPreviewImage(null)} className="absolute top-4 right-4 bg-slate-800 text-white rounded-full p-2 shadow-lg"><Icon name="LogOut" size={20}/></button>
+                  <img src={previewImage} className="w-full h-auto rounded-lg" alt="안내장 원본"/>
+               </div>
+            </div>
+          )}
+        </div>
+      );
+    };
 
-                {currentForm && viewMode === 'status' && (
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-100 border-b border-slate-200">
-                          <th className="py-4 px-6 font-bold text-slate-600">학생</th>
-                          <th className="py-4 px-6 font-bold text-slate-600">학부모</th>
-                          <th className="py-4 px-6 font-bold text-slate-600">제출결과</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {currentSubs.map(s => (
-                          <tr key={s.id} className="border-b border-slate-100">
-                            <td className="py-4 px-6 font-bold">{s.studentGrade}학년 {s.studentName}</td>
-                            <td className="py-4 px-6 text-slate-600">{s.parentName}</td>
-                            <td className="py-4 px-6">
-                              <span className={`px-3 py-1 font-bold rounded-lg text-sm ${s.consentStatus === 'agree' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                {s.consentStatus === 'agree' ? '동의' : '미동의'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+    // --- 하위 탭: 학부모 주소록 ---
+    const TeacherContactsTab = ({ db, appId, user, contacts, onToast }) => {
+      const [studentName, setStudentName] = useState('');
+      const [parentName, setParentName] = useState('');
+      const [phone, setPhone] = useState('');
+      const fileInputRef = useRef(null);
 
-                {currentForm && viewMode === 'original' && (
-                  <div className="flex gap-6">
-                    <div className="w-64 bg-white border border-slate-200 rounded-2xl p-2 shrink-0 print:hidden h-fit">
-                      {currentSubs.map(s => (
-                        <button key={s.id} onClick={() => setSelectedSub(s)} className={`w-full text-left p-4 rounded-xl text-sm font-bold border ${selectedSub?.id === s.id ? 'bg-blue-50 border-blue-200 text-blue-800' : 'border-transparent text-slate-600'}`}>
-                          {s.studentName} ({s.consentStatus === 'agree'?'동의':'미동의'})
-                        </button>
-                      ))}
+      const handleAddContact = async (e) => {
+        e.preventDefault();
+        if (!studentName || !parentName || !phone) return onToast('모든 항목을 입력해주세요.', 'error');
+        try {
+          await db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('contacts').add({ studentName, parentName, phone, createdAt: Date.now() });
+          onToast('주소록에 추가되었습니다.');
+          setStudentName(''); setParentName(''); setPhone('');
+        } catch (error) { onToast('추가 오류', 'error'); }
+      };
+
+      const handleDelete = async (id) => {
+        if(window.confirm('정말 삭제하시겠습니까?')) {
+           await db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('contacts').doc(id).delete();
+           onToast('삭제되었습니다.');
+        }
+      };
+
+      // 엑셀 양식 다운로드
+      const downloadTemplate = () => {
+        const ws = XLSX.utils.json_to_sheet([ { "학생이름": "홍길동", "학부모이름": "홍파파", "연락처": "010-1234-5678" } ]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "학부모주소록");
+        XLSX.writeFile(wb, "상평초_학부모주소록_일괄등록양식.xlsx");
+      };
+
+      // 엑셀 업로드 처리
+      const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          try {
+            const data = new Uint8Array(evt.target.result);
+            const workbook = XLSX.read(data, {type: 'array'});
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            const json = XLSX.utils.sheet_to_json(worksheet);
+            
+            let count = 0;
+            const batch = db.batch(); // Firebase 일괄 쓰기
+            json.forEach(row => {
+               if(row.학생이름 && row.학부모이름 && row.연락처) {
+                  const docRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('contacts').doc();
+                  batch.set(docRef, { studentName: row.학생이름, parentName: row.학부모이름, phone: String(row.연락처), createdAt: Date.now() });
+                  count++;
+               }
+            });
+            await batch.commit();
+            onToast(`${count}명의 연락처가 일괄 등록되었습니다.`);
+          } catch(err) {
+            onToast('엑셀 파일 분석 오류가 발생했습니다. 양식을 확인해주세요.', 'error');
+          }
+          if(fileInputRef.current) fileInputRef.current.value = ''; // 초기화
+        };
+        reader.readAsArrayBuffer(file);
+      };
+
+      return (
+        <div className="max-w-5xl mx-auto animate-fade-in-up space-y-8">
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-slate-50 p-6 border-b flex justify-between items-center">
+               <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Icon name="Users" size={24} className="text-blue-600"/> 학부모 연락처 등록</h2>
+               <div className="flex gap-2">
+                 <button onClick={downloadTemplate} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-50 shadow-sm">엑셀 양식 다운로드</button>
+                 <label className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg shadow-sm cursor-pointer transition-colors">
+                    엑셀 일괄 업로드
+                    <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleFileUpload} ref={fileInputRef}/>
+                 </label>
+               </div>
+            </div>
+            <div className="p-8">
+              <form onSubmit={handleAddContact} className="flex flex-col md:flex-row gap-4">
+                <input type="text" value={studentName} onChange={e=>setStudentName(e.target.value)} placeholder="학생 이름" className="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none" />
+                <input type="text" value={parentName} onChange={e=>setParentName(e.target.value)} placeholder="학부모 이름" className="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none" />
+                <input type="text" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="연락처 (- 포함)" className="flex-[1.5] px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none font-mono" />
+                <button type="submit" className="bg-blue-600 text-white font-bold py-4 px-8 rounded-xl hover:bg-blue-700 shadow-md">개별 추가</button>
+              </form>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+              <h3 className="font-bold text-slate-800">등록된 주소록 목록</h3>
+              <span className="text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">총 {contacts.length}명</span>
+            </div>
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-white border-b border-slate-200">
+                  <th className="py-4 px-6 font-bold text-slate-400 text-sm">학생 이름</th>
+                  <th className="py-4 px-6 font-bold text-slate-400 text-sm">학부모 이름</th>
+                  <th className="py-4 px-6 font-bold text-slate-400 text-sm">연락처</th>
+                  <th className="py-4 px-6 font-bold text-slate-400 text-sm w-20">관리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contacts.length === 0 && <tr><td colSpan="4" className="py-10 text-center text-slate-400 font-bold">등록된 주소록이 없습니다.</td></tr>}
+                {contacts.map(c => (
+                  <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                    <td className="py-4 px-6 text-slate-800 font-bold">{c.studentName}</td>
+                    <td className="py-4 px-6 text-slate-800 font-bold">{c.parentName}</td>
+                    <td className="py-4 px-6 text-slate-600 font-mono font-medium">{c.phone}</td>
+                    <td className="py-4 px-6 text-center">
+                       <button onClick={()=>handleDelete(c.id)} className="text-red-400 hover:text-red-600 p-1 bg-red-50 rounded-lg"><Icon name="Trash2" size={16}/></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    };
+
+    // --- 하위 탭: 환경설정 ---
+    const TeacherSettingsTab = ({ db, appId, user, settings, onToast }) => {
+      const [smsApiKey, setSmsApiKey] = useState(settings.smsApiKey || '');
+      const [smsApiSecret, setSmsApiSecret] = useState(settings.smsApiSecret || '');
+      const [senderPhone, setSenderPhone] = useState(settings.senderPhone || '033-672-4268');
+      const [isSaving, setIsSaving] = useState(false);
+
+      const handleSaveSettings = async () => {
+        setIsSaving(true);
+        try {
+          await db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('settings').doc('config').set({ smsApiKey, smsApiSecret, senderPhone }, { merge: true });
+          onToast('환경설정이 안전하게 저장되었습니다.');
+        } catch (error) { onToast('저장 중 오류가 발생했습니다.', 'error'); }
+        setIsSaving(false);
+      };
+
+      return (
+        <div className="max-w-3xl mx-auto animate-fade-in-up">
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-10">
+            <h2 className="text-2xl font-black text-slate-800 mb-2 flex items-center gap-2"><Icon name="Settings" className="text-blue-600"/> 자동 문자 발송 연동 설정</h2>
+            <p className="text-slate-500 mb-10 border-b border-slate-100 pb-8 leading-relaxed">
+              유료 문자 발송 서비스(솔라피, 알리고 등)의 API 키를 입력하시면, 앱 안에서 버튼 하나로 자동 문자를 발송할 수 있습니다.
+            </p>
+            <div className="space-y-8">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-3">발신번호 (학교 번호)</label>
+                <input type="text" value={senderPhone} onChange={e=>setSenderPhone(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-mono font-bold text-lg text-slate-800" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-3">API Key</label>
+                <input type="password" value={smsApiKey} onChange={e=>setSmsApiKey(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-mono text-lg" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-3">API Secret (필요한 경우)</label>
+                <input type="password" value={smsApiSecret} onChange={e=>setSmsApiSecret(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-mono text-lg" />
+              </div>
+              <button onClick={handleSaveSettings} disabled={isSaving} className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-5 rounded-xl flex items-center justify-center gap-2 transition-all mt-8 text-lg shadow-lg">
+                <Icon name="Save" size={20}/> {isSaving ? '저장 중...' : '설정 저장하기'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- 하위 탭: 취합 결과 ---
+    const TeacherResultsTab = ({ forms, submissions, selectedFormId, setSelectedFormId, viewMode, setViewMode }) => {
+      const [selectedSub, setSelectedSub] = useState(null);
+
+      const currentForm = forms.find(f => f.id === selectedFormId);
+      const currentSubs = submissions.filter(s => s.formId === selectedFormId);
+
+      const copyToExcel = () => {
+        if (currentSubs.length === 0) return;
+        const header = "제출일시\t학년\t학생이름\t관계\t학부모이름\t응답결과\n";
+        const rows = currentSubs.map(s => `${formatDate(s.createdAt)}\t${s.studentGrade}\t${s.studentName}\t${s.parentRelation||''}\t${s.parentName}\t${s.consentStatus}`).join("\n");
+        navigator.clipboard.writeText(header + rows).then(() => alert("데이터가 복사되었습니다. 엑셀에 붙여넣기 하세요."));
+      };
+
+      return (
+        <div className="max-w-5xl mx-auto animate-fade-in-up pb-20">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+            <h2 className="text-2xl font-black text-slate-800">제출 결과 확인</h2>
+            <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200 print:hidden w-full md:w-auto">
+              <button onClick={() => setViewMode('status')} className={`flex-1 px-6 py-2.5 rounded-lg text-sm font-bold transition-colors ${viewMode === 'status' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500'}`}>목록 보기</button>
+              <button onClick={() => setViewMode('original')} className={`flex-1 px-6 py-2.5 rounded-lg text-sm font-bold transition-colors ${viewMode === 'original' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500'}`}>인쇄/원본 보기</button>
+            </div>
+          </div>
+
+          <select value={selectedFormId} onChange={e => {setSelectedFormId(e.target.value); setSelectedSub(null);}} className="w-full max-w-xl px-5 py-4 mb-8 bg-white border-2 border-slate-200 rounded-xl focus:border-blue-500 font-bold text-slate-700 shadow-sm appearance-none print:hidden outline-none text-lg">
+            {forms.length === 0 && <option value="">등록된 안내장이 없습니다.</option>}
+            {forms.map(f => <option key={f.id} value={f.id}>{f.title} (총 {submissions.filter(s=>s.formId === f.id).length}건 제출)</option>)}
+          </select>
+
+          {currentForm && viewMode === 'status' && (
+            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="p-6 bg-slate-50 border-b flex justify-between items-center">
+                 <span className="font-bold text-slate-700">전체 제출: <span className="text-blue-600 text-lg">{currentSubs.length}</span>명</span>
+                 <button onClick={copyToExcel} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg text-sm flex items-center gap-2 shadow-sm transition-colors"><Icon name="Download" size={16}/> 엑셀(나이스) 복사</button>
+              </div>
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-white border-b border-slate-200">
+                    <th className="py-4 px-6 font-bold text-slate-400 text-sm">학생</th>
+                    <th className="py-4 px-6 font-bold text-slate-400 text-sm">학부모 (관계)</th>
+                    <th className="py-4 px-6 font-bold text-slate-400 text-sm">응답결과</th>
+                    <th className="py-4 px-6 font-bold text-slate-400 text-sm hidden md:table-cell">제출일시</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentSubs.length === 0 && <tr><td colSpan="4" className="py-10 text-center text-slate-400 font-bold">제출된 내역이 없습니다.</td></tr>}
+                  {currentSubs.map(s => (
+                    <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50">
+                      <td className="py-4 px-6 font-bold text-slate-800">{s.studentGrade}학년 {s.studentName}</td>
+                      <td className="py-4 px-6 text-slate-600">{s.parentName} <span className="text-xs text-slate-400">({s.parentRelation||'-'})</span></td>
+                      <td className="py-4 px-6">
+                        <span className="px-3 py-1 font-bold rounded-lg text-sm bg-blue-50 text-blue-700 border border-blue-100">{s.consentStatus}</span>
+                      </td>
+                      <td className="py-4 px-6 text-sm text-slate-400 hidden md:table-cell font-mono">{formatDate(s.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {currentForm && viewMode === 'original' && (
+            <div className="flex flex-col md:flex-row gap-6">
+              <div className="w-full md:w-64 bg-white border border-slate-200 rounded-3xl p-3 shrink-0 print:hidden h-fit max-h-[600px] overflow-y-auto no-scrollbar shadow-sm">
+                <div className="text-sm font-bold text-slate-400 px-3 mb-2 mt-2">제출자 목록</div>
+                {currentSubs.length === 0 && <div className="text-center text-slate-400 text-sm py-4">제출자가 없습니다.</div>}
+                {currentSubs.map(s => (
+                  <button key={s.id} onClick={() => setSelectedSub(s)} className={`w-full text-left px-4 py-4 rounded-2xl text-sm font-bold mb-1 transition-colors ${selectedSub?.id === s.id ? 'bg-blue-600 text-white shadow-md' : 'hover:bg-slate-50 text-slate-700'}`}>
+                    <div className="flex justify-between items-center">
+                       <span>{s.studentName}</span>
+                       <span className={`text-[10px] px-2 py-0.5 rounded-full ${selectedSub?.id === s.id ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>{s.consentStatus}</span>
                     </div>
+                  </button>
+                ))}
+              </div>
 
-                    <div className="flex-1 bg-white border border-slate-200 rounded-2xl p-10 min-h-[800px] print:border-none print:shadow-none print:p-0">
-                      {selectedSub ? (
-                        <div className="max-w-[210mm] mx-auto text-slate-900 relative">
-                           <button onClick={() => window.print()} className="absolute -top-4 -right-4 bg-slate-800 text-white px-5 py-2.5 rounded-xl font-bold shadow-lg hover:bg-slate-900 print:hidden">
-                            인쇄하기
-                          </button>
-                          <div className="text-center border-b-2 border-black pb-6 mb-8 pt-4"><h1 className="text-3xl font-black">{currentForm.title}</h1></div>
-                          {currentForm.imageData && <div className="mb-8 flex justify-center"><img src={currentForm.imageData} className="max-w-full border" /></div>}
-                          <div className="border-t-2 border-black pt-8">
-                            <div className="text-xl mb-8 font-bold">상기 내용에 <span className="text-2xl underline underline-offset-8 px-2">{selectedSub.consentStatus === 'agree' ? '동의합니다' : '동의하지 않습니다'}</span>.</div>
-                            <div className="grid grid-cols-2 gap-4 mb-10 text-lg">
-                              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">학생: <b>{selectedSub.studentGrade}학년 {selectedSub.studentName}</b></div>
-                              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">학부모: <b>{selectedSub.parentName}</b></div>
-                            </div>
-                            <div className="flex flex-col items-end mr-4">
-                              <div className="text-lg mb-2">{formatDate(selectedSub.createdAt)}</div>
-                              <div className="flex items-center gap-4 text-2xl font-bold">
-                                학부모 서명 :
-                                <div className="w-32 h-16 border-b-2 border-black relative">
-                                  {selectedSub.signatureData && <img src={selectedSub.signatureData} className="absolute bottom-1 h-20" />}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="mt-20 text-center font-black text-2xl tracking-widest">상평초등학교장 귀하</div>
+              <div className="flex-1 bg-white border border-slate-200 rounded-3xl p-10 min-h-[800px] shadow-sm print:border-none print:shadow-none print:p-0">
+                {selectedSub ? (
+                  <div className="max-w-[210mm] mx-auto text-slate-900 relative">
+                     <button onClick={() => window.print()} className="absolute -top-4 -right-4 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-xl font-bold shadow-lg print:hidden flex items-center gap-2 transition-colors">
+                      <Icon name="FileText" size={18}/> 인쇄 결재
+                    </button>
+                    <div className="text-center border-b-2 border-slate-900 pb-6 mb-8 pt-4"><h1 className="text-3xl font-black">{currentForm.title}</h1></div>
+                    {currentForm.imageData && <div className="mb-8 flex justify-center"><img src={currentForm.imageData} className="max-w-full border rounded-lg" alt="안내장 원본" /></div>}
+                    
+                    <div className="border-t-2 border-slate-900 pt-8 mt-10">
+                      <div className="text-xl mb-8 font-bold leading-relaxed">상기 내용에 <span className="text-2xl underline underline-offset-8 px-2 decoration-2">{selectedSub.consentStatus}</span>.</div>
+                      <div className="grid grid-cols-2 gap-4 mb-10 text-lg">
+                        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200"><span className="text-slate-400 text-sm block mb-1">학생 정보</span><b>{selectedSub.studentGrade}학년 {selectedSub.studentName}</b></div>
+                        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200"><span className="text-slate-400 text-sm block mb-1">학부모 정보</span><b>{selectedSub.parentRelation} {selectedSub.parentName}</b></div>
+                      </div>
+                      <div className="flex flex-col items-end mr-4">
+                        <div className="text-lg mb-2 text-slate-500 font-medium">{formatDate(selectedSub.createdAt)} 제출됨</div>
+                        <div className="flex items-center gap-4 text-2xl font-bold">
+                          학부모 서명 :
+                          <div className="w-40 h-16 border-b-2 border-slate-900 relative">
+                            {selectedSub.signatureData && <img src={selectedSub.signatureData} className="absolute bottom-1 h-20" />}
                           </div>
                         </div>
-                      ) : <div className="text-center text-slate-400 font-bold mt-20">좌측에서 제출자를 선택하세요.</div>}
+                      </div>
+                      <div className="mt-24 text-center font-black text-3xl tracking-widest text-slate-900">상평초등학교장 귀하</div>
                     </div>
                   </div>
-                )}
+                ) : <div className="h-full flex items-center justify-center text-slate-300 font-bold text-xl flex-col gap-4 mt-40"><Icon name="MousePointerClick" size={48}/> 좌측에서 제출자를 선택하세요.</div>}
               </div>
-            )}
-          </main>
+            </div>
+          )}
         </div>
       );
     };
@@ -539,7 +866,7 @@
           setLoading(false);
         });
         
-        // 학부모 화면 접근 시 자동 익명 로그인
+        // 학부모 접근 시
         if (formId && !user) {
           auth.signInAnonymously().catch(e => console.error(e));
         }
@@ -555,12 +882,18 @@
             <TeacherView user={user} onToast={showToast} />
           ) : (
             <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-              <div className="bg-white p-10 rounded-3xl shadow-xl max-w-sm w-full text-center">
-                <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6"><Icon name="FileSignature" size={40} className="text-blue-600"/></div>
-                <h1 className="text-2xl font-black text-slate-800 mb-2">관리자 로그인</h1>
-                <p className="text-slate-500 mb-8 text-sm">상평초등학교 공수전분교장</p>
-                <button onClick={() => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())} className="w-full bg-white border-2 border-slate-200 text-slate-700 font-bold py-4 rounded-xl shadow-sm hover:bg-slate-50">
-                  구글 계정으로 로그인
+              <div className="bg-white p-10 rounded-3xl shadow-xl max-w-md w-full text-center border border-slate-100">
+                <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6"><Icon name="FileSignature" size={48} className="text-blue-600"/></div>
+                <h1 className="text-2xl font-black text-slate-800 mb-2 tracking-tight">e-가정통신문</h1>
+                <p className="text-slate-500 mb-10 text-sm font-medium">상평초등학교 공수전분교장</p>
+                <button onClick={() => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())} className="w-full bg-white border-2 border-slate-200 text-slate-700 font-bold py-4 rounded-xl shadow-sm hover:bg-slate-50 flex items-center justify-center gap-3 transition-colors text-lg">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24">
+                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                     <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                     <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                  구글 계정으로 시작하기 (관리자 로그인)
                 </button>
               </div>
             </div>
