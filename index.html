@@ -258,6 +258,16 @@
         } catch (error) { onToast('제출 실패', 'error'); setIsSubmitting(false); }
       };
 
+      const closeWindow = () => {
+        // 브라우저 및 카카오톡 인앱 브라우저 호환성을 위한 창닫기 로직
+        window.open('', '_self', '');
+        window.close();
+        // 안드로이드 카카오톡 등에서 window.close()가 안 먹힐 때 대비책
+        if (typeof WeixinJSBridge !== "undefined") {
+            WeixinJSBridge.call('closeWindow');
+        }
+      };
+
       if (loading) return <div className="min-h-screen bg-slate-50 flex justify-center items-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div></div>;
       
       // 마감된 폼 처리
@@ -277,13 +287,11 @@
         <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
           <div className="bg-white p-10 rounded-3xl shadow-xl max-w-sm w-full text-center">
             <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6"><Icon name="CheckCircle2" size={50} className="text-green-600" /></div>
-            <h2 className="text-2xl font-black text-slate-800 mb-2">동의서 제출 완료</h2>
-            <p className="text-slate-500 font-medium mb-8">안전하게 학교로 전송되었습니다.<br/>감사합니다.</p>
-            <div className="bg-slate-50 p-5 rounded-2xl text-left text-sm font-bold text-slate-700 border border-slate-200">
-              <div className="flex justify-between mb-3"><span className="text-slate-400">학생</span> <span>{studentGrade}학년 {studentName}</span></div>
-              <div className="flex justify-between mb-3"><span className="text-slate-400">학부모</span> <span>{parentRelation} {parentName}</span></div>
-              <div className="flex justify-between"><span className="text-slate-400">결과</span> <span className="text-blue-600">{consentStatus}</span></div>
-            </div>
+            <h2 className="text-2xl font-black text-slate-800 mb-4">제출 완료</h2>
+            <p className="text-slate-600 font-medium mb-10 text-lg leading-relaxed">제출이 완료되었습니다.<br/>협조해 주셔서 정말 감사드립니다~^^</p>
+            <button onClick={closeWindow} className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-4 rounded-xl shadow-md transition-colors text-lg">
+              창닫고 나가기
+            </button>
           </div>
         </div>
       );
@@ -485,6 +493,27 @@
         } catch (e) { onToast('상태 변경 오류', 'error'); }
       };
 
+      const handleDeleteForm = async (formId) => {
+        if (window.confirm('정말 삭제하시겠습니까?\n이 안내장에 제출된 학부모님의 결과 및 원문 데이터도 함께 영구적으로 삭제됩니다.')) {
+          try {
+            // 1. 안내장(Form) 삭제
+            await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('forms').doc(formId).delete();
+
+            // 2. 해당 안내장의 취합 결과(Submissions) 모두 삭제
+            const subsSnapshot = await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('submissions').where('formId', '==', formId).get();
+            const batch = db.batch();
+            subsSnapshot.forEach(doc => {
+              batch.delete(doc.ref);
+            });
+            await batch.commit();
+
+            onToast('안내장과 관련 데이터가 모두 삭제되었습니다.');
+          } catch (error) {
+            onToast('삭제 중 오류가 발생했습니다.', 'error');
+          }
+        }
+      };
+
       const copyLink = (formId) => {
         const link = `${window.location.origin}${window.location.pathname}?formId=${formId}`;
         navigator.clipboard.writeText(`[상평초 공수전분교장]\n아래 링크를 눌러 동의서에 서명해주세요.\n\n${link}`).then(() => {
@@ -534,7 +563,7 @@
             <div className="max-h-[500px] overflow-y-auto no-scrollbar p-2">
               {forms.length === 0 && <div className="p-10 text-center text-slate-400 font-bold">등록된 안내장이 없습니다.</div>}
               {forms.map(form => (
-                <div key={form.id} className="flex flex-col md:flex-row items-center justify-between p-4 border-b border-slate-100 hover:bg-slate-50 transition-colors gap-4">
+                <div key={form.id} className="flex flex-col md:flex-row items-center justify-between p-4 border-b border-slate-100 hover:bg-slate-50 transition-colors gap-4 group">
                   <div className="flex-1 cursor-pointer w-full" onClick={() => setPreviewImage(form.imageData)}>
                     <h3 className="font-bold text-lg text-slate-800 hover:text-blue-600 line-clamp-1 break-all">{form.title}</h3>
                     <div className="flex items-center gap-2 mt-1">
@@ -543,7 +572,7 @@
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-                    <button onClick={() => toggleStatus(form.id, form.isClosed)} className={`px-4 py-2 text-sm font-bold rounded-lg border transition-colors whitespace-nowrap ${form.isClosed ? 'border-green-200 text-green-700 hover:bg-green-50' : 'border-red-200 text-red-600 hover:bg-red-50'}`}>
+                    <button onClick={() => toggleStatus(form.id, form.isClosed)} className={`px-4 py-2 text-sm font-bold rounded-lg border transition-colors whitespace-nowrap ${form.isClosed ? 'border-green-200 text-green-700 hover:bg-green-50' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`}>
                       {form.isClosed ? '다시오픈' : '마감처리'}
                     </button>
                     <button onClick={() => copyLink(form.id)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap">
@@ -554,6 +583,9 @@
                     </button>
                     <button onClick={() => goToResults(form.id, 'original')} className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold rounded-lg whitespace-nowrap transition-colors">
                       원본확인
+                    </button>
+                    <button onClick={() => handleDeleteForm(form.id)} className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-500 text-sm font-bold rounded-lg transition-colors flex items-center justify-center shrink-0" title="안내장 및 데이터 전체 삭제">
+                      <Icon name="Trash2" size={18}/>
                     </button>
                   </div>
                 </div>
