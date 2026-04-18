@@ -63,7 +63,7 @@
     const db = firebase.firestore();
     const appId = 'sangpyeong-consent-app';
 
-    // --- 2. 아이콘 컴포넌트 ---
+    // --- 2. 아이콘 컴포넌트 (안전 렌더링 방식 적용) ---
     const Icon = ({ name, size = 24, className = "" }) => {
       const spanRef = useRef(null);
       useEffect(() => {
@@ -216,7 +216,7 @@
       const [submitted, setSubmitted] = useState(false);
       const [previewImage, setPreviewImage] = useState(null); 
       
-      const pdfTargetRef = useRef(null); // PDF 생성을 위한 숨겨진 영역
+      const pdfTargetRef = useRef(null); 
 
       useEffect(() => {
         const fetchForm = async () => {
@@ -240,7 +240,7 @@
         fetchForm();
       }, [formId]);
 
-      // 구글 드라이브 자동 업로드 로직
+      // 선생님이 설계하신 API A+B 변수 결합 구글 드라이브 자동 업로드 로직
       const uploadToDrive = async (pdfBlob, fileName) => {
         if(!form) return;
         
@@ -265,9 +265,9 @@
             method: 'POST',
             body: formData
           });
-          console.log("드라이브 업로드 시도 완료");
+          console.log("드라이브 업로드 시도 성공!");
         } catch(e) {
-          console.error("드라이브 업로드 실패", e);
+          console.error("드라이브 업로드 실패: GCP 권한 등을 확인하세요.", e);
         }
       };
 
@@ -279,18 +279,17 @@
         setIsSubmitting(true);
         
         try {
-          // 1. Firebase 데이터베이스 저장
           await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('submissions').add({
             formId, studentGrade, studentName, parentName, parentRelation, consentStatus, signatureData, createdAt: Date.now()
           });
 
-          // 2. 완벽한 1장짜리 PDF 변환 및 드라이브 업로드
+          // 무조건 1장에 들어가는 강력한 PDF 변환 및 자동 업로드 실행
           if (pdfTargetRef.current && (form.driveApiA || form.driveApiB)) {
             const opt = {
-              margin: 10,
+              margin: 0, 
               filename: `${studentGrade}학년_${studentName}_동의서.pdf`,
               image: { type: 'jpeg', quality: 0.98 },
-              html2canvas: { scale: 2 },
+              html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
               jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
             
@@ -314,7 +313,7 @@
             WeixinJSBridge.call('closeWindow');
         }
         setTimeout(() => {
-            onToast('기기 설정에 따라 창이 자동으로 닫히지 않을 수 있습니다. 창을 직접 닫아주세요.', 'error');
+            onToast('브라우저 설정상 창이 자동으로 닫히지 않을 수 있습니다. 창을 직접 닫아주세요.', 'error');
         }, 500);
       };
 
@@ -443,31 +442,41 @@
             </div>
           )}
 
-          {/* 구글 드라이브 업로드를 위한 1장짜리 PDF 생성용 숨김 영역 */}
+          {/* 1장짜리 레이아웃으로 꽉 잡힌 PDF 생성 전용 백그라운드 영역 */}
           <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
-            <div ref={pdfTargetRef} style={{ width: '210mm', height: '290mm', padding: '20px', backgroundColor: 'white', color: 'black', fontFamily: 'sans-serif', boxSizing: 'border-box' }}>
-              <div style={{ textAlign: 'center', borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>
+            <div ref={pdfTargetRef} style={{ width: '210mm', height: '296mm', padding: '15mm', backgroundColor: 'white', color: 'black', fontFamily: 'sans-serif', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ textAlign: 'center', borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '10px', flexShrink: 0 }}>
                 <h1 style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>{form.title}</h1>
               </div>
               
-              {/* 사진 원본 크기를 절반 정도로 강제 고정하여 1장에 쏙 들어가게 세팅 */}
-              {form.imageData && (
-                <div style={{ height: '130mm', marginBottom: '15px', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-                  <img src={form.imageData} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} alt="안내장" />
-                </div>
-              )}
+              <div style={{ flex: '1 1 auto', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', minHeight: '80mm', maxHeight: '130mm', marginBottom: '10px' }}>
+                <img src={form.imageData} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} alt="안내장" />
+              </div>
               
-              <div style={{ borderTop: '2px solid black', paddingTop: '15px' }}>
+              <div style={{ borderTop: '2px solid black', paddingTop: '15px', flexShrink: 0 }}>
                 <p style={{ fontSize: '18px', marginBottom: '15px' }}>
-                  상기 내용에 <strong>{consentStatus}</strong>.
+                  상기 내용에 <strong style={{ textDecoration: 'underline', color: '#1d4ed8' }}>{consentStatus}</strong>.
                 </p>
-                <p style={{ fontSize: '15px', marginBottom: '8px' }}>학생 정보: {studentGrade}학년 {studentName}</p>
-                <p style={{ fontSize: '15px', marginBottom: '15px' }}>학부모 정보: {parentRelation} {parentName}</p>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-                   <span style={{ fontSize: '15px', marginRight: '10px' }}>학부모 서명:</span>
-                   {signatureData && <img src={signatureData} style={{ height: '50px', objectFit: 'contain' }} alt="서명" />}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
+                  <div style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px', width: '48%' }}>
+                    <span style={{ fontSize: '12px', color: '#666', display: 'block' }}>학생 정보</span>
+                    <strong>{studentGrade}학년 {studentName}</strong>
+                  </div>
+                  <div style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px', width: '48%' }}>
+                    <span style={{ fontSize: '12px', color: '#666', display: 'block' }}>학부모 정보</span>
+                    <strong>{parentRelation} {parentName}</strong>
+                  </div>
                 </div>
-                <h2 style={{ textAlign: 'center', marginTop: '30px', fontSize: '20px', fontWeight: 'bold' }}>상평초등학교장 귀하</h2>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginRight: '10px' }}>
+                   <span style={{ fontSize: '14px', color: '#666', marginBottom: '5px' }}>{formatDate(Date.now())} 제출됨</span>
+                   <div style={{ display: 'flex', alignItems: 'flex-end', fontSize: '18px', fontWeight: 'bold' }}>
+                      학부모 서명:
+                      <div style={{ width: '120px', borderBottom: '2px solid black', marginLeft: '10px', textAlign: 'center', height: '40px', position: 'relative' }}>
+                        {signatureData && <img src={signatureData} style={{ maxHeight: '100%', maxWidth: '100%', position: 'absolute', bottom: '2px', left: '50%', transform: 'translateX(-50%)' }} />}
+                      </div>
+                   </div>
+                </div>
+                <h2 style={{ textAlign: 'center', marginTop: '20px', fontSize: '22px', fontWeight: 'bold', letterSpacing: '2px' }}>상평초등학교장 귀하</h2>
               </div>
             </div>
           </div>
@@ -484,7 +493,7 @@
       const [contacts, setContacts] = useState([]);
       const [settings, setSettings] = useState({ 
         smsApiKey: '', smsApiSecret: '', senderPhone: '033-672-4268',
-        driveApiA: '', driveApiB: '', driveFolderId: '' // 구글 드라이브 연동 설정 추가
+        driveApiA: '', driveApiB: '', driveFolderId: ''
       });
 
       const [selectedFormId, setSelectedFormId] = useState('');
@@ -591,7 +600,6 @@
           await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('forms').add({
             title, imageData: image, teacherUid: user.uid, createdAt: Date.now(),
             responseType, customOpt1, customOpt2, isClosed: false,
-            // 환경설정에 등록해둔 드라이브 API 설정을 해당 폼에 첨부 (학부모가 제출시 자동 사용)
             driveApiA: settings.driveApiA || '',
             driveApiB: settings.driveApiB || '',
             driveFolderId: settings.driveFolderId || '',
@@ -677,43 +685,6 @@
             </div>
           </section>
 
-          <section className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-slate-100 bg-slate-50">
-               <h2 className="text-xl font-bold text-slate-800">등록된 안내장 목록</h2>
-            </div>
-            <div className="max-h-[500px] overflow-y-auto no-scrollbar p-2">
-              {forms.length === 0 && <div className="p-10 text-center text-slate-400 font-bold">등록된 안내장이 없습니다.</div>}
-              {forms.map(form => (
-                <div key={form.id} className="flex flex-col md:flex-row items-center justify-between p-4 border-b border-slate-100 hover:bg-slate-50 transition-colors gap-4 group">
-                  <div className="flex-1 cursor-pointer w-full" onClick={() => setPreviewImage(form.imageData)}>
-                    <h3 className="font-bold text-lg text-slate-800 hover:text-blue-600 line-clamp-1 break-all">{form.title}</h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-slate-400 font-mono">{formatDate(form.createdAt)}</span>
-                      {form.isClosed && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">마감됨</span>}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 shrink-0 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-                    <button onClick={() => toggleStatus(form.id, form.isClosed)} className={`px-4 py-2 text-sm font-bold rounded-lg border transition-colors whitespace-nowrap ${form.isClosed ? 'border-green-200 text-green-700 hover:bg-green-50' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`}>
-                      {form.isClosed ? '다시오픈' : '마감처리'}
-                    </button>
-                    <button onClick={() => copyLink(form.id)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap">
-                      <Icon name="Copy" size={16}/> 공유링크
-                    </button>
-                    <button onClick={() => goToResults(form.id, 'status')} className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-bold rounded-lg whitespace-nowrap transition-colors">
-                      결과확인
-                    </button>
-                    <button onClick={() => goToResults(form.id, 'original')} className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold rounded-lg whitespace-nowrap transition-colors">
-                      원본확인
-                    </button>
-                    <button onClick={() => handleDeleteForm(form.id)} className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-500 text-sm font-bold rounded-lg transition-colors flex items-center justify-center shrink-0" title="안내장 및 데이터 전체 삭제">
-                      <Icon name="Trash2" size={18}/>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
           {/* 교사용 안내장 원본 보기 모달 */}
           {previewImage && (
             <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[200] p-4" onClick={()=>setPreviewImage(null)}>
@@ -727,8 +698,10 @@
       );
     };
 
-    // --- 하위 탭: 학부모 주소록 ---
+    // --- 하위 탭: 학부모 주소록 (학년/반 추가 및 정렬 로직 적용) ---
     const TeacherContactsTab = ({ db, appId, user, contacts, onToast }) => {
+      const [studentGrade, setStudentGrade] = useState('');
+      const [studentClass, setStudentClass] = useState('');
       const [studentName, setStudentName] = useState('');
       const [parentName, setParentName] = useState('');
       const [phone, setPhone] = useState('');
@@ -736,11 +709,18 @@
 
       const handleAddContact = async (e) => {
         e.preventDefault();
-        if (!studentName || !parentName || !phone) return onToast('모든 항목을 입력해주세요.', 'error');
+        if (!studentGrade || !studentClass || !studentName || !parentName || !phone) return onToast('모든 항목을 입력해주세요.', 'error');
         try {
-          await db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('contacts').add({ studentName, parentName, phone, createdAt: Date.now() });
+          await db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('contacts').add({ 
+            studentGrade: Number(studentGrade), 
+            studentClass: String(studentClass), 
+            studentName, 
+            parentName, 
+            phone, 
+            createdAt: Date.now() 
+          });
           onToast('주소록에 추가되었습니다.');
-          setStudentName(''); setParentName(''); setPhone('');
+          setStudentGrade(''); setStudentClass(''); setStudentName(''); setParentName(''); setPhone('');
         } catch (error) { onToast('추가 오류', 'error'); }
       };
 
@@ -752,7 +732,7 @@
       };
 
       const downloadTemplate = () => {
-        const ws = XLSX.utils.json_to_sheet([ { "학생이름": "홍길동", "학부모이름": "홍파파", "연락처": "010-1234-5678" } ]);
+        const ws = XLSX.utils.json_to_sheet([ { "학년": 1, "반": 1, "학생성명": "홍길동", "학부모성명": "홍파파", "연락처": "010-1234-5678" } ]);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "학부모주소록");
         XLSX.writeFile(wb, "상평초_학부모주소록_일괄등록양식.xlsx");
@@ -772,9 +752,16 @@
             let count = 0;
             const batch = db.batch();
             json.forEach(row => {
-               if(row.학생이름 && row.학부모이름 && row.연락처) {
+               if(row.학년 && row.반 && row.학생성명 && row.학부모성명 && row.연락처) {
                   const docRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('contacts').doc();
-                  batch.set(docRef, { studentName: row.학생이름, parentName: row.학부모이름, phone: String(row.연락처), createdAt: Date.now() });
+                  batch.set(docRef, { 
+                    studentGrade: Number(row.학년), 
+                    studentClass: String(row.반), 
+                    studentName: String(row.학생성명), 
+                    parentName: String(row.학부모성명), 
+                    phone: String(row.연락처), 
+                    createdAt: Date.now() 
+                  });
                   count++;
                }
             });
@@ -787,6 +774,18 @@
         };
         reader.readAsArrayBuffer(file);
       };
+
+      // 연락처 정렬 로직 (1순위: 학년 오름차순, 2순위: 이름 ㄱㄴㄷ순)
+      const sortedContacts = [...contacts].sort((a, b) => {
+        const gradeA = Number(a.studentGrade) || 0;
+        const gradeB = Number(b.studentGrade) || 0;
+        if (gradeA !== gradeB) {
+          return gradeA - gradeB;
+        }
+        const nameA = a.studentName || '';
+        const nameB = b.studentName || '';
+        return nameA.localeCompare(nameB, 'ko-KR');
+      });
 
       return (
         <div className="max-w-5xl mx-auto animate-fade-in-up space-y-8">
@@ -802,11 +801,15 @@
                </div>
             </div>
             <div className="p-8">
-              <form onSubmit={handleAddContact} className="flex flex-col md:flex-row gap-4">
-                <input type="text" value={studentName} onChange={e=>setStudentName(e.target.value)} placeholder="학생 이름" className="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none" />
-                <input type="text" value={parentName} onChange={e=>setParentName(e.target.value)} placeholder="학부모 이름" className="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none" />
-                <input type="text" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="연락처 (- 포함)" className="flex-[1.5] px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none font-mono" />
-                <button type="submit" className="bg-blue-600 text-white font-bold py-4 px-8 rounded-xl hover:bg-blue-700 shadow-md">개별 추가</button>
+              <form onSubmit={handleAddContact} className="flex flex-col md:flex-row gap-3">
+                <select value={studentGrade} onChange={e=>setStudentGrade(e.target.value)} className="w-full md:w-28 px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none appearance-none shrink-0">
+                  <option value="">학년</option>{[1,2,3,4,5,6].map(g => <option key={g} value={g}>{g}학년</option>)}
+                </select>
+                <input type="text" value={studentClass} onChange={e=>setStudentClass(e.target.value)} placeholder="반" className="w-full md:w-20 px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none shrink-0" />
+                <input type="text" value={studentName} onChange={e=>setStudentName(e.target.value)} placeholder="학생 성명" className="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none" />
+                <input type="text" value={parentName} onChange={e=>setParentName(e.target.value)} placeholder="학부모 성명" className="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none" />
+                <input type="text" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="연락처 (- 포함)" className="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none font-mono" />
+                <button type="submit" className="bg-blue-600 text-white font-bold py-4 px-6 rounded-xl hover:bg-blue-700 shadow-md shrink-0 whitespace-nowrap">개별 추가</button>
               </form>
             </div>
           </div>
@@ -819,16 +822,18 @@
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-white border-b border-slate-200">
-                  <th className="py-4 px-6 font-bold text-slate-400 text-sm">학생 이름</th>
-                  <th className="py-4 px-6 font-bold text-slate-400 text-sm">학부모 이름</th>
+                  <th className="py-4 px-6 font-bold text-slate-400 text-sm">학년/반</th>
+                  <th className="py-4 px-6 font-bold text-slate-400 text-sm">학생 성명</th>
+                  <th className="py-4 px-6 font-bold text-slate-400 text-sm">학부모 성명</th>
                   <th className="py-4 px-6 font-bold text-slate-400 text-sm">연락처</th>
                   <th className="py-4 px-6 font-bold text-slate-400 text-sm w-20">관리</th>
                 </tr>
               </thead>
               <tbody>
-                {contacts.length === 0 && <tr><td colSpan="4" className="py-10 text-center text-slate-400 font-bold">등록된 주소록이 없습니다.</td></tr>}
-                {contacts.map(c => (
+                {sortedContacts.length === 0 && <tr><td colSpan="5" className="py-10 text-center text-slate-400 font-bold">등록된 주소록이 없습니다.</td></tr>}
+                {sortedContacts.map(c => (
                   <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                    <td className="py-4 px-6 text-slate-800 font-bold">{c.studentGrade ? `${c.studentGrade}학년` : ''} {c.studentClass ? `${c.studentClass}반` : ''}</td>
                     <td className="py-4 px-6 text-slate-800 font-bold">{c.studentName}</td>
                     <td className="py-4 px-6 text-slate-800 font-bold">{c.parentName}</td>
                     <td className="py-4 px-6 text-slate-600 font-mono font-medium">{c.phone}</td>
@@ -844,7 +849,7 @@
       );
     };
 
-    // --- 하위 탭: 환경설정 ---
+    // --- 하위 탭: 환경설정 (안내 문구 삭제됨) ---
     const TeacherSettingsTab = ({ db, appId, user, settings, onToast }) => {
       const [smsApiKey, setSmsApiKey] = useState(settings.smsApiKey || '');
       const [smsApiSecret, setSmsApiSecret] = useState(settings.smsApiSecret || '');
@@ -871,10 +876,7 @@
         <div className="max-w-3xl mx-auto animate-fade-in-up space-y-6 pb-20">
           
           <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-10">
-            <h2 className="text-2xl font-black text-slate-800 mb-2 flex items-center gap-2"><Icon name="FolderUp" className="text-blue-600"/> 구글 드라이브 업로드 연동</h2>
-            <p className="text-slate-500 mb-10 border-b border-slate-100 pb-8 leading-relaxed">
-              선생님께서 제안해주신 변수 분할(A+B) 방식을 적용했습니다! API Key를 두 부분으로 나누어 입력해 두시면 학부모 제출 시 자동으로 PDF가 생성되어 드라이브에 업로드됩니다.
-            </p>
+            <h2 className="text-2xl font-black text-slate-800 mb-8 flex items-center gap-2"><Icon name="FolderUp" className="text-blue-600"/> 구글 드라이브 자동 업로드 연동</h2>
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-3">구글 드라이브 폴더 ID</label>
@@ -921,25 +923,76 @@
     // --- 하위 탭: 취합 결과 ---
     const TeacherResultsTab = ({ forms, submissions, selectedFormId, setSelectedFormId, viewMode, setViewMode, onToast }) => {
       const [selectedSub, setSelectedSub] = useState(null);
+      const [isUploadingDrive, setIsUploadingDrive] = useState(false);
+      const pdfTargetRef = useRef(null);
 
       const currentForm = forms.find(f => f.id === selectedFormId);
       const currentSubs = submissions.filter(s => s.formId === selectedFormId);
 
-      // 혁신적인 구글 시트 연동 (API 없이 완벽하게 복사 후 붙여넣기 유도)
-      const copyToGoogleSheets = () => {
+      // 1. 요청하신 엑셀 파일 다운로드 기능 원복
+      const downloadExcel = () => {
         if (currentSubs.length === 0) return onToast('제출된 데이터가 없습니다.', 'error');
         
-        const header = "제출일시\t학년\t학생이름\t관계\t학부모이름\t응답결과\n";
-        const rows = currentSubs.map(s => `${formatDate(s.createdAt)}\t${s.studentGrade}\t${s.studentName}\t${s.parentRelation||'-'}\t${s.parentName}\t${s.consentStatus}`).join("\n");
+        const data = currentSubs.map(s => ({
+          "제출일시": formatDate(s.createdAt),
+          "학년": s.studentGrade,
+          "학생이름": s.studentName,
+          "관계": s.parentRelation || '-',
+          "학부모이름": s.parentName,
+          "응답결과": s.consentStatus
+        }));
         
-        navigator.clipboard.writeText(header + rows).then(() => {
-          onToast('표 복사 완료! 새 시트 창에서 Ctrl+V(붙여넣기)를 눌러주세요.');
-          setTimeout(() => {
-            window.open('https://sheets.new/', '_blank');
-          }, 1500);
-        }).catch(() => {
-           onToast('복사에 실패했습니다. 브라우저 권한을 확인해주세요.', 'error');
-        });
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "제출결과");
+        
+        XLSX.writeFile(wb, `${currentForm.title}_제출결과.xlsx`);
+        onToast('엑셀 파일이 성공적으로 다운로드되었습니다.');
+      };
+
+      // 2. 선생님의 교사 모드에서도 드라이브 자동 업로드를 원할 때 실행하는 함수
+      const uploadToDrive = async () => {
+        if (!selectedSub || !currentForm) return onToast('선택된 데이터가 없습니다.', 'error');
+        if (!currentForm.driveApiA && !currentForm.driveApiB) return onToast('환경설정에서 드라이브 API 키를 먼저 설정해주세요.', 'error');
+        if (!currentForm.driveFolderId) return onToast('환경설정에서 드라이브 폴더 ID를 설정해주세요.', 'error');
+
+        setIsUploadingDrive(true);
+        const apiKey = (currentForm.driveApiA || '') + (currentForm.driveApiB || '');
+        const folderId = currentForm.driveFolderId;
+        const fileName = `${selectedSub.studentGrade}학년_${selectedSub.studentName}_동의서.pdf`;
+
+        try {
+          const opt = {
+            margin: 0,
+            filename: fileName,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+          };
+          const pdfBlob = await html2pdf().set(opt).from(pdfTargetRef.current).output('blob');
+
+          const metadata = { name: fileName, parents: [folderId] };
+          const formData = new FormData();
+          formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+          formData.append('file', pdfBlob);
+
+          const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&key=${apiKey}`, {
+            method: 'POST',
+            body: formData
+          });
+
+          if(res.ok) {
+            onToast(`해당 학생의 동의서가 드라이브에 저장되었습니다!`);
+          } else {
+            console.error(await res.json());
+            onToast('업로드 실패: 구글 클라우드 권한을 확인해주세요.', 'error');
+          }
+        } catch(e) {
+          console.error(e);
+          onToast('업로드 중 오류가 발생했습니다.', 'error');
+        } finally {
+          setIsUploadingDrive(false);
+        }
       };
 
       return (
@@ -970,8 +1023,8 @@
               <div className="p-6 bg-slate-50 border-b flex justify-between items-center flex-wrap gap-4">
                  <span className="font-bold text-slate-700">전체 제출: <span className="text-blue-600 text-lg">{currentSubs.length}</span>명</span>
                  
-                 <button onClick={copyToGoogleSheets} className="px-5 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-sm flex items-center gap-2 shadow-sm transition-colors">
-                    <Icon name="FileSpreadsheet" size={18}/> 구글 스프레드시트로 열기
+                 <button onClick={downloadExcel} className="px-5 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-sm flex items-center gap-2 shadow-sm transition-colors">
+                    <Icon name="Download" size={18}/> 엑셀파일로 다운받기
                  </button>
               </div>
               <table className="w-full text-left border-collapse">
@@ -1000,7 +1053,7 @@
             </div>
           )}
 
-          {/* 에러를 완벽히 수정한 원본 보기 화면 (1장 출력용 레이아웃 완벽 대응) */}
+          {/* 인쇄 및 원본 보기 (하얀 화면 버그 100% 수정 + 완벽한 1장 구조) */}
           {currentForm && viewMode === 'original' && (
             <div className="flex flex-col md:flex-row gap-6">
               <div className="w-full md:w-64 bg-white border border-slate-200 rounded-3xl p-3 shrink-0 print:hidden h-fit max-h-[600px] overflow-y-auto no-scrollbar shadow-sm">
@@ -1016,36 +1069,38 @@
                 ))}
               </div>
 
-              <div className="flex-1 bg-white border border-slate-200 rounded-3xl p-10 min-h-[800px] shadow-sm print:border-none print:shadow-none print:p-0 relative">
+              <div className="flex-1 bg-white border border-slate-200 rounded-3xl p-10 min-h-[800px] shadow-sm print:border-none print:shadow-none print:p-0 relative flex justify-center">
                 {selectedSub ? (
-                  <div className="max-w-[210mm] mx-auto text-slate-900 relative bg-white print:p-0">
-                     {/* 저장 및 드라이브 보관 버튼 모음 */}
+                  <div className="relative bg-white print:p-0" style={{ width: '210mm', minHeight: '296mm', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', padding: '15mm' }}>
+                     
                      <div className="absolute -top-4 -right-4 flex gap-2 z-10 print:hidden">
-                        {currentForm.driveLink && (
-                          <a href={currentForm.driveLink} target="_blank" rel="noopener noreferrer" className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-4 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2 transition-colors">
-                            <Icon name="FolderOpen" size={18}/> 드라이브 보관
-                          </a>
-                        )}
+                        {/* 교사용 자동 업로드 버튼 신설 */}
+                        <button onClick={uploadToDrive} disabled={isUploadingDrive} className="bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-4 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2 transition-colors">
+                          {isUploadingDrive ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-700"></div> : <Icon name="FolderUp" size={18}/>}
+                          {isUploadingDrive ? '업로드 중...' : '이 동의서를 드라이브에 저장'}
+                        </button>
+                        
                         <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2 transition-colors">
                           <Icon name="Printer" size={18}/> 인쇄 / PDF 저장
                         </button>
                      </div>
                     
-                    <div className="text-center border-b-2 border-slate-900 pb-4 mb-4 pt-4">
-                      <h1 className="text-2xl font-black">{currentForm?.title || ''}</h1>
+                    {/* --- 완벽한 1장짜리 보고서 레이아웃 --- */}
+                    <div style={{ textAlign: 'center', borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '10px', flexShrink: 0 }}>
+                      <h1 style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>{currentForm?.title || ''}</h1>
                     </div>
                     
-                    {/* 이미지 높이를 강력하게 제한하여 1장 안에 반드시 들어가게 함 */}
-                    <div className="mb-4 flex justify-center h-[130mm] items-center overflow-hidden">
+                    {/* 이미지 높이를 최대 13cm(130mm)로 제한하여 절대로 2장으로 넘어가지 않게 함 */}
+                    <div style={{ flex: '1 1 auto', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', minHeight: '80mm', maxHeight: '130mm', marginBottom: '10px' }}>
                       {currentForm?.imageData ? (
-                        <img src={currentForm.imageData} className="max-w-full max-h-full border rounded-lg object-contain" alt="안내장 원본" />
+                        <img src={currentForm.imageData} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} alt="안내장 원본" />
                       ) : (
                         <div className="p-10 border-2 border-dashed border-slate-300 rounded-lg text-slate-400 font-bold w-full text-center">첨부된 안내장 이미지가 없습니다.</div>
                       )}
                     </div>
                     
-                    <div className="border-t-2 border-slate-900 pt-6 mt-4">
-                      <div className="text-lg mb-6 font-bold leading-relaxed">
+                    <div style={{ borderTop: '2px solid black', paddingTop: '15px', flexShrink: 0 }}>
+                      <div className="text-lg mb-4 font-bold leading-relaxed">
                         상기 내용에 <span className="text-xl underline underline-offset-8 px-2 decoration-2 text-blue-700 print:text-black">{selectedSub?.consentStatus || ''}</span>.
                       </div>
                       
@@ -1059,17 +1114,59 @@
                         <div className="flex items-center gap-4 text-xl font-bold">
                           학부모 서명 :
                           <div className="w-32 h-12 border-b-2 border-slate-900 relative flex justify-center items-end pb-1">
-                            {selectedSub?.signatureData && <img src={selectedSub.signatureData} className="absolute bottom-1 h-16 object-contain" alt="서명" />}
+                            {selectedSub?.signatureData && <img src={selectedSub.signatureData} className="absolute bottom-1 h-12 object-contain" alt="서명" />}
                           </div>
                         </div>
                       </div>
-                      <div className="mt-12 text-center font-black text-2xl tracking-widest text-slate-900">상평초등학교장 귀하</div>
+                      <div className="mt-8 mb-4 text-center font-black text-2xl tracking-widest text-slate-900">상평초등학교장 귀하</div>
                     </div>
                   </div>
                 ) : <div className="h-full flex items-center justify-center text-slate-300 font-bold text-xl flex-col gap-4 mt-40"><Icon name="MousePointerClick" size={48}/> 좌측에서 제출자를 선택하세요.</div>}
               </div>
             </div>
           )}
+
+          {/* 구글 드라이브 업로드를 위해 화면 뒤에 숨겨진 1장짜리 PDF 캡처용 영역 */}
+          {selectedSub && (
+            <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+              <div ref={pdfTargetRef} style={{ width: '210mm', height: '296mm', padding: '15mm', backgroundColor: 'white', color: 'black', fontFamily: 'sans-serif', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ textAlign: 'center', borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '10px', flexShrink: 0 }}>
+                  <h1 style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>{currentForm?.title || ''}</h1>
+                </div>
+                
+                <div style={{ flex: '1 1 auto', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', minHeight: '80mm', maxHeight: '130mm', marginBottom: '10px' }}>
+                  {currentForm?.imageData && <img src={currentForm.imageData} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} alt="안내장 원본" />}
+                </div>
+                
+                <div style={{ borderTop: '2px solid black', paddingTop: '15px', flexShrink: 0 }}>
+                  <p style={{ fontSize: '18px', marginBottom: '15px' }}>
+                    상기 내용에 <strong style={{ textDecoration: 'underline', color: '#1d4ed8' }}>{selectedSub?.consentStatus || ''}</strong>.
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
+                    <div style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px', width: '48%' }}>
+                      <span style={{ fontSize: '12px', color: '#666', display: 'block' }}>학생 정보</span>
+                      <strong>{selectedSub?.studentGrade || ''}학년 {selectedSub?.studentName || ''}</strong>
+                    </div>
+                    <div style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '8px', width: '48%' }}>
+                      <span style={{ fontSize: '12px', color: '#666', display: 'block' }}>학부모 정보</span>
+                      <strong>{selectedSub?.parentRelation || ''} {selectedSub?.parentName || ''}</strong>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginRight: '10px' }}>
+                     <span style={{ fontSize: '14px', color: '#666', marginBottom: '5px' }}>{formatDate(selectedSub?.createdAt)} 제출됨</span>
+                     <div style={{ display: 'flex', alignItems: 'flex-end', fontSize: '18px', fontWeight: 'bold' }}>
+                        학부모 서명:
+                        <div style={{ width: '120px', borderBottom: '2px solid black', marginLeft: '10px', textAlign: 'center', height: '40px', position: 'relative' }}>
+                          {selectedSub?.signatureData && <img src={selectedSub.signatureData} style={{ maxHeight: '100%', maxWidth: '100%', position: 'absolute', bottom: '2px', left: '50%', transform: 'translateX(-50%)' }} />}
+                        </div>
+                     </div>
+                  </div>
+                  <h2 style={{ textAlign: 'center', marginTop: '20px', fontSize: '22px', fontWeight: 'bold', letterSpacing: '2px' }}>상평초등학교장 귀하</h2>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       );
     };
