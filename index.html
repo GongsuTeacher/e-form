@@ -63,8 +63,7 @@
     const db = firebase.firestore();
     const appId = 'sangpyeong-consent-app';
 
-    // --- 2. 아이콘 컴포넌트 (흰색 화면 오류 원인 완벽 해결본) ---
-    // 기존에 React DOM 렌더링과 충돌하던 버그를 해결하기 위해 안전한 방식으로 변경
+    // --- 2. 아이콘 컴포넌트 ---
     const Icon = ({ name, size = 24, className = "" }) => {
       const spanRef = useRef(null);
       useEffect(() => {
@@ -241,17 +240,15 @@
         fetchForm();
       }, [formId]);
 
-      // 선생님이 요청하신 구글 드라이브 자동 업로드 로직 (API 분할 변수 방식)
+      // 구글 드라이브 자동 업로드 로직
       const uploadToDrive = async (pdfBlob, fileName) => {
         if(!form) return;
         
-        // 환경설정에서 가져온 분리된 API 키
         const apiPartA = form.driveApiA || '';
         const apiPartB = form.driveApiB || '';
-        const apiKey = apiPartA + apiPartB; // A+B 결합
+        const apiKey = apiPartA + apiPartB; 
         const folderId = form.driveFolderId || '';
 
-        // API 키나 폴더 ID가 설정되지 않았으면 조용히 패스 (기본 DB 저장만 수행)
         if (!apiKey || !folderId) return;
 
         const metadata = {
@@ -264,14 +261,13 @@
         formData.append('file', pdfBlob);
 
         try {
-          // 구글 드라이브 REST API 호출
           await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&key=${apiKey}`, {
             method: 'POST',
             body: formData
           });
           console.log("드라이브 업로드 시도 완료");
         } catch(e) {
-          console.error("드라이브 업로드 실패 (구글 보안 정책에 의한 차단일 수 있습니다)", e);
+          console.error("드라이브 업로드 실패", e);
         }
       };
 
@@ -283,12 +279,12 @@
         setIsSubmitting(true);
         
         try {
-          // 1. Firebase 데이터베이스에 기본 정보 저장
+          // 1. Firebase 데이터베이스 저장
           await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('submissions').add({
             formId, studentGrade, studentName, parentName, parentRelation, consentStatus, signatureData, createdAt: Date.now()
           });
 
-          // 2. PDF 변환 및 구글 드라이브 자동 업로드 (선생님 요청사항)
+          // 2. 완벽한 1장짜리 PDF 변환 및 드라이브 업로드
           if (pdfTargetRef.current && (form.driveApiA || form.driveApiB)) {
             const opt = {
               margin: 10,
@@ -298,9 +294,7 @@
               jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
             
-            // HTML을 PDF Blob으로 변환
             const pdfBlob = await html2pdf().set(opt).from(pdfTargetRef.current).output('blob');
-            // 드라이브 업로드 함수 호출
             await uploadToDrive(pdfBlob, `${studentGrade}학년_${studentName}_동의서.pdf`);
           }
           
@@ -449,28 +443,31 @@
             </div>
           )}
 
-          {/* 구글 드라이브 업로드를 위한 PDF 생성용 숨김 영역 (화면엔 안 보임) */}
+          {/* 구글 드라이브 업로드를 위한 1장짜리 PDF 생성용 숨김 영역 */}
           <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
-            <div ref={pdfTargetRef} style={{ width: '210mm', padding: '30px', backgroundColor: 'white', color: 'black', fontFamily: 'sans-serif' }}>
-              <div style={{ textAlign: 'center', borderBottom: '2px solid black', paddingBottom: '15px', marginBottom: '20px' }}>
-                <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>{form.title}</h1>
+            <div ref={pdfTargetRef} style={{ width: '210mm', height: '290mm', padding: '20px', backgroundColor: 'white', color: 'black', fontFamily: 'sans-serif', boxSizing: 'border-box' }}>
+              <div style={{ textAlign: 'center', borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>
+                <h1 style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>{form.title}</h1>
               </div>
+              
+              {/* 사진 원본 크기를 절반 정도로 강제 고정하여 1장에 쏙 들어가게 세팅 */}
               {form.imageData && (
-                <div style={{ marginBottom: '30px', textAlign: 'center' }}>
-                  <img src={form.imageData} style={{ maxWidth: '100%', height: 'auto' }} />
+                <div style={{ height: '130mm', marginBottom: '15px', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+                  <img src={form.imageData} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} alt="안내장" />
                 </div>
               )}
-              <div style={{ borderTop: '2px solid black', paddingTop: '20px' }}>
-                <p style={{ fontSize: '18px', marginBottom: '20px' }}>
+              
+              <div style={{ borderTop: '2px solid black', paddingTop: '15px' }}>
+                <p style={{ fontSize: '18px', marginBottom: '15px' }}>
                   상기 내용에 <strong>{consentStatus}</strong>.
                 </p>
-                <p style={{ fontSize: '16px', marginBottom: '10px' }}>학생 정보: {studentGrade}학년 {studentName}</p>
-                <p style={{ fontSize: '16px', marginBottom: '20px' }}>학부모 정보: {parentRelation} {parentName}</p>
+                <p style={{ fontSize: '15px', marginBottom: '8px' }}>학생 정보: {studentGrade}학년 {studentName}</p>
+                <p style={{ fontSize: '15px', marginBottom: '15px' }}>학부모 정보: {parentRelation} {parentName}</p>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-                   <span style={{ fontSize: '16px', marginRight: '10px' }}>학부모 서명:</span>
-                   {signatureData && <img src={signatureData} style={{ height: '60px' }} />}
+                   <span style={{ fontSize: '15px', marginRight: '10px' }}>학부모 서명:</span>
+                   {signatureData && <img src={signatureData} style={{ height: '50px', objectFit: 'contain' }} alt="서명" />}
                 </div>
-                <h2 style={{ textAlign: 'center', marginTop: '40px', fontSize: '20px', fontWeight: 'bold' }}>상평초등학교장 귀하</h2>
+                <h2 style={{ textAlign: 'center', marginTop: '30px', fontSize: '20px', fontWeight: 'bold' }}>상평초등학교장 귀하</h2>
               </div>
             </div>
           </div>
@@ -570,6 +567,7 @@
     const TeacherFormsTab = ({ db, appId, user, forms, settings, onToast, goToResults }) => {
       const [title, setTitle] = useState('');
       const [image, setImage] = useState(null);
+      const [driveLink, setDriveLink] = useState('');
       const [isUploading, setIsUploading] = useState(false);
       
       const [responseType, setResponseType] = useState('agree');
@@ -596,10 +594,11 @@
             // 환경설정에 등록해둔 드라이브 API 설정을 해당 폼에 첨부 (학부모가 제출시 자동 사용)
             driveApiA: settings.driveApiA || '',
             driveApiB: settings.driveApiB || '',
-            driveFolderId: settings.driveFolderId || ''
+            driveFolderId: settings.driveFolderId || '',
+            driveLink: driveLink.trim()
           });
           onToast('안내장이 등록되었습니다.');
-          setTitle(''); setImage(null); setResponseType('agree'); setCustomOpt1(''); setCustomOpt2('');
+          setTitle(''); setImage(null); setResponseType('agree'); setCustomOpt1(''); setCustomOpt2(''); setDriveLink('');
         } catch (error) { onToast('등록 오류', 'error'); }
         setIsUploading(false);
       };
@@ -659,6 +658,12 @@
                 )}
               </div>
 
+              <div className="px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl">
+                <p className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><Icon name="FolderUp" size={16}/> 취합 서류 보관용 구글 드라이브 링크 (선택사항)</p>
+                <input type="text" value={driveLink} onChange={e => setDriveLink(e.target.value)} placeholder="예: https://drive.google.com/drive/folders/..." className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono" />
+                <p className="text-xs text-slate-400 mt-2">* 여기에 공유 드라이브 링크를 넣어두시면, 나중에 '결과 확인' 탭에서 클릭 한 번으로 폴더를 열 수 있습니다.</p>
+              </div>
+
               <div>
                 <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-blue-50 transition-colors">
                   <span className="text-sm font-bold text-slate-500 flex items-center gap-2"><Icon name="FileText" size={20}/> 클릭하여 안내장 이미지(JPG) 첨부</span>
@@ -709,6 +714,7 @@
             </div>
           </section>
 
+          {/* 교사용 안내장 원본 보기 모달 */}
           {previewImage && (
             <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[200] p-4" onClick={()=>setPreviewImage(null)}>
                <div className="relative max-w-2xl w-full max-h-[90vh] overflow-y-auto bg-white rounded-xl p-2" onClick={e=>e.stopPropagation()}>
@@ -912,7 +918,7 @@
       );
     };
 
-    // --- 하위 탭: 취합 결과 (버그 완벽 수정본) ---
+    // --- 하위 탭: 취합 결과 ---
     const TeacherResultsTab = ({ forms, submissions, selectedFormId, setSelectedFormId, viewMode, setViewMode, onToast }) => {
       const [selectedSub, setSelectedSub] = useState(null);
 
@@ -951,6 +957,12 @@
               {forms.length === 0 && <option value="">등록된 안내장이 없습니다.</option>}
               {forms.map(f => <option key={f.id} value={f.id}>{f.title} (총 {submissions.filter(s=>s.formId === f.id).length}건 제출)</option>)}
             </select>
+
+            {currentForm?.driveLink && (
+              <a href={currentForm.driveLink} target="_blank" rel="noopener noreferrer" className="w-full md:w-auto px-6 py-4 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors print:hidden shadow-sm shrink-0">
+                <Icon name="FolderOpen" size={20}/> 보관용 구글 드라이브 열기
+              </a>
+            )}
           </div>
 
           {currentForm && viewMode === 'status' && (
@@ -988,7 +1000,7 @@
             </div>
           )}
 
-          {/* 에러를 완벽히 수정한 원본 보기 화면 */}
+          {/* 에러를 완벽히 수정한 원본 보기 화면 (1장 출력용 레이아웃 완벽 대응) */}
           {currentForm && viewMode === 'original' && (
             <div className="flex flex-col md:flex-row gap-6">
               <div className="w-full md:w-64 bg-white border border-slate-200 rounded-3xl p-3 shrink-0 print:hidden h-fit max-h-[600px] overflow-y-auto no-scrollbar shadow-sm">
@@ -1006,50 +1018,55 @@
 
               <div className="flex-1 bg-white border border-slate-200 rounded-3xl p-10 min-h-[800px] shadow-sm print:border-none print:shadow-none print:p-0 relative">
                 {selectedSub ? (
-                  <div className="max-w-[210mm] mx-auto text-slate-900 relative">
+                  <div className="max-w-[210mm] mx-auto text-slate-900 relative bg-white print:p-0">
                      {/* 저장 및 드라이브 보관 버튼 모음 */}
                      <div className="absolute -top-4 -right-4 flex gap-2 z-10 print:hidden">
                         {currentForm.driveLink && (
                           <a href={currentForm.driveLink} target="_blank" rel="noopener noreferrer" className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-4 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2 transition-colors">
-                            드라이브 열기 (보관용)
+                            <Icon name="FolderOpen" size={18}/> 드라이브 보관
                           </a>
                         )}
                         <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2 transition-colors">
-                          인쇄 / PDF 다운로드
+                          <Icon name="Printer" size={18}/> 인쇄 / PDF 저장
                         </button>
                      </div>
                     
-                    <div className="text-center border-b-2 border-slate-900 pb-6 mb-8 pt-4"><h1 className="text-3xl font-black">{currentForm?.title || ''}</h1></div>
+                    <div className="text-center border-b-2 border-slate-900 pb-4 mb-4 pt-4">
+                      <h1 className="text-2xl font-black">{currentForm?.title || ''}</h1>
+                    </div>
                     
-                    <div className="mb-8 flex justify-center">
+                    {/* 이미지 높이를 강력하게 제한하여 1장 안에 반드시 들어가게 함 */}
+                    <div className="mb-4 flex justify-center h-[130mm] items-center overflow-hidden">
                       {currentForm?.imageData ? (
-                        <img src={currentForm.imageData} className="max-w-full h-auto border rounded-lg object-contain" alt="안내장 원본" />
+                        <img src={currentForm.imageData} className="max-w-full max-h-full border rounded-lg object-contain" alt="안내장 원본" />
                       ) : (
                         <div className="p-10 border-2 border-dashed border-slate-300 rounded-lg text-slate-400 font-bold w-full text-center">첨부된 안내장 이미지가 없습니다.</div>
                       )}
                     </div>
                     
-                    <div className="border-t-2 border-slate-900 pt-8 mt-10">
-                      <div className="text-xl mb-8 font-bold leading-relaxed">상기 내용에 <span className="text-2xl underline underline-offset-8 px-2 decoration-2 text-blue-700">{selectedSub?.consentStatus || ''}</span>.</div>
+                    <div className="border-t-2 border-slate-900 pt-6 mt-4">
+                      <div className="text-lg mb-6 font-bold leading-relaxed">
+                        상기 내용에 <span className="text-xl underline underline-offset-8 px-2 decoration-2 text-blue-700 print:text-black">{selectedSub?.consentStatus || ''}</span>.
+                      </div>
                       
-                      <div className="grid grid-cols-2 gap-4 mb-10 text-lg">
-                        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200"><span className="text-slate-400 text-sm block mb-1">학생 정보</span><b>{selectedSub?.studentGrade || ''}학년 {selectedSub?.studentName || ''}</b></div>
-                        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200"><span className="text-slate-400 text-sm block mb-1">학부모 정보</span><b>{selectedSub?.parentRelation || ''} {selectedSub?.parentName || ''}</b></div>
+                      <div className="grid grid-cols-2 gap-4 mb-6 text-base">
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 print:border-slate-300"><span className="text-slate-500 text-xs block mb-1">학생 정보</span><b>{selectedSub?.studentGrade || ''}학년 {selectedSub?.studentName || ''}</b></div>
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 print:border-slate-300"><span className="text-slate-500 text-xs block mb-1">학부모 정보</span><b>{selectedSub?.parentRelation || ''} {selectedSub?.parentName || ''}</b></div>
                       </div>
                       
                       <div className="flex flex-col items-end mr-4">
-                        <div className="text-lg mb-2 text-slate-500 font-medium">{formatDate(selectedSub?.createdAt)} 제출됨</div>
-                        <div className="flex items-center gap-4 text-2xl font-bold">
+                        <div className="text-sm mb-2 text-slate-500 font-medium">{formatDate(selectedSub?.createdAt)} 제출됨</div>
+                        <div className="flex items-center gap-4 text-xl font-bold">
                           학부모 서명 :
-                          <div className="w-40 h-16 border-b-2 border-slate-900 relative flex justify-center items-end pb-1">
-                            {selectedSub?.signatureData && <img src={selectedSub.signatureData} className="absolute bottom-1 h-20 object-contain" alt="서명" />}
+                          <div className="w-32 h-12 border-b-2 border-slate-900 relative flex justify-center items-end pb-1">
+                            {selectedSub?.signatureData && <img src={selectedSub.signatureData} className="absolute bottom-1 h-16 object-contain" alt="서명" />}
                           </div>
                         </div>
                       </div>
-                      <div className="mt-24 text-center font-black text-3xl tracking-widest text-slate-900">상평초등학교장 귀하</div>
+                      <div className="mt-12 text-center font-black text-2xl tracking-widest text-slate-900">상평초등학교장 귀하</div>
                     </div>
                   </div>
-                ) : <div className="h-full flex items-center justify-center text-slate-300 font-bold text-xl flex-col gap-4 mt-40">좌측에서 제출자를 선택하세요.</div>}
+                ) : <div className="h-full flex items-center justify-center text-slate-300 font-bold text-xl flex-col gap-4 mt-40"><Icon name="MousePointerClick" size={48}/> 좌측에서 제출자를 선택하세요.</div>}
               </div>
             </div>
           )}
