@@ -6,18 +6,15 @@
   <title>상평초 공수전분교장 e-가정통신문</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
-  
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
   <script src="https://unpkg.com/lucide@latest"></script>
-
+  
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-
+  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
@@ -34,13 +31,11 @@
   </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans antialiased">
-
   <div id="root"></div>
 
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    // --- 1. Firebase 초기화 ---
     const firebaseConfig = {
       apiKey: "AIzaSyA4bDW9tzSINZQ1JwEO7XRm4ZQWsoJiFtM",
       authDomain: "e-form-f81f7.firebaseapp.com",
@@ -50,29 +45,22 @@
       appId: "1:733136134146:web:c8f23540655f516958871b"
     };
 
-    if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
-    }
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.firestore();
     const appId = 'sangpyeong-consent-app';
 
-    // --- 2. 아이콘 컴포넌트 ---
     const Icon = ({ name, size = 24, className = "" }) => {
       const spanRef = useRef(null);
       useEffect(() => {
         if (spanRef.current) {
           spanRef.current.innerHTML = `<i data-lucide="${name}"></i>`;
-          lucide.createIcons({
-            root: spanRef.current,
-            attrs: { width: size, height: size, class: className }
-          });
+          lucide.createIcons({ root: spanRef.current, attrs: { width: size, height: size, class: className } });
         }
       }, [name, size, className]);
       return <span ref={spanRef} className="inline-flex items-center justify-center"></span>;
     };
 
-    // --- 3. 유틸리티 함수 ---
     const compressImage = (file) => {
       return new Promise((resolve) => {
         const reader = new FileReader();
@@ -105,49 +93,32 @@
       return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     };
 
-    // PDF Blob을 Base64 문자열로 변환하는 함수
     const blobToBase64 = (blob) => {
-      return new Promise((resolve, _) => {
+      return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result.split(',')[1]);
         reader.readAsDataURL(blob);
       });
     };
 
-    // (수정) Google Apps Script를 이용한 무적의 업로드 함수!
     const uploadToGas = async (pdfBlob, fileName, gasUrl, folderId) => {
       if (!gasUrl || !folderId) return;
-      
       const base64File = await blobToBase64(pdfBlob);
-      
-      const payload = {
-        folderId: folderId,
-        filename: fileName,
-        fileBase64: base64File
-      };
+      const payload = { folderId: folderId, filename: fileName, fileBase64: base64File };
 
       try {
-        const res = await fetch(gasUrl, {
-          method: 'POST',
-          body: JSON.stringify(payload) // 텍스트 형태로 전송하여 CORS 우회
-        });
+        const res = await fetch(gasUrl, { method: 'POST', body: JSON.stringify(payload) });
         const result = await res.json();
-        
-        if(result.result !== 'success') {
-           throw new Error(result.message);
-        }
+        if(result.result !== 'success') throw new Error(result.message);
         return true;
       } catch(e) {
-        console.error("업로드 에러:", e);
         throw new Error('드라이브 서버 전송에 실패했습니다.');
       }
     };
 
-    // (수정) 결과 색상 출력 함수 (동의/참가: 파랑, 미동의/불참: 빨강)
     const getStatusColorClass = (status, form) => {
       const opt1 = form?.responseType === 'participate' ? '참여함' : form?.responseType === 'custom' ? form.customOpt1 : '동의함';
       const opt2 = form?.responseType === 'participate' ? '불참' : form?.responseType === 'custom' ? form.customOpt2 : '미동의';
-
       if (status === opt1) return 'bg-blue-50 text-blue-700 border border-blue-200';
       if (status === opt2) return 'bg-red-50 text-red-700 border border-red-200';
       return 'bg-slate-50 text-slate-700 border border-slate-200';
@@ -156,19 +127,16 @@
     const getStatusTextColor = (status, form) => {
       const opt1 = form?.responseType === 'participate' ? '참여함' : form?.responseType === 'custom' ? form.customOpt1 : '동의함';
       const opt2 = form?.responseType === 'participate' ? '불참' : form?.responseType === 'custom' ? form.customOpt2 : '미동의';
-
       if (status === opt1) return 'text-blue-700 decoration-blue-500';
       if (status === opt2) return 'text-red-700 decoration-red-500';
       return 'text-slate-900 decoration-slate-500';
     };
 
-    // --- 4. 공통 컴포넌트 ---
     const Toast = ({ message, type, onClose }) => {
       useEffect(() => {
         const timer = setTimeout(onClose, 4000);
         return () => clearTimeout(timer);
       }, [onClose]);
-
       return (
         <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-[200] border font-bold whitespace-nowrap ${type === 'error' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-slate-800 text-white border-slate-700'}`}>
           {type === 'error' ? <Icon name="AlertCircle" size={24} /> : <Icon name="CheckCircle2" size={24} className="text-green-400" />}
@@ -226,47 +194,35 @@
         if (onSave) onSave(canvasRef.current.toDataURL('image/png'));
       };
 
-      const clearCanvas = () => {
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (onClear) onClear();
-      };
-
       return (
         <div className="flex flex-col items-center w-full">
           <div className="w-full bg-white border-2 border-slate-300 rounded-xl overflow-hidden relative touch-none shadow-inner" style={{ height: '200px' }}>
-            <canvas
-              ref={canvasRef}
-              className="w-full h-full cursor-crosshair"
-              onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
-              onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
-            />
+            <canvas ref={canvasRef} className="w-full h-full cursor-crosshair" onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing} onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing} />
             <div className="absolute top-3 left-3 text-sm text-slate-400 pointer-events-none font-medium">이곳에 정자로 서명해주세요.</div>
           </div>
-          <button type="button" onClick={clearCanvas} className="mt-3 text-sm font-semibold text-slate-500 hover:text-slate-700 bg-slate-100 px-4 py-1.5 rounded-lg transition-colors">
+          <button type="button" onClick={() => {
+            const ctx = canvasRef.current.getContext('2d');
+            ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+            if (onClear) onClear();
+          }} className="mt-3 text-sm font-semibold text-slate-500 hover:text-slate-700 bg-slate-100 px-4 py-1.5 rounded-lg transition-colors">
             서명 다시하기
           </button>
         </div>
       );
     };
 
-    // --- 5. 학부모 제출 화면 ---
     const ParentView = ({ formId, onToast }) => {
       const [form, setForm] = useState(null);
       const [loading, setLoading] = useState(true);
-      
       const [studentGrade, setStudentGrade] = useState('');
       const [studentName, setStudentName] = useState('');
       const [parentRelation, setParentRelation] = useState('부');
       const [parentName, setParentName] = useState('');
       const [consentStatus, setConsentStatus] = useState('');
       const [signatureData, setSignatureData] = useState(null);
-      
       const [isSubmitting, setIsSubmitting] = useState(false);
       const [submitted, setSubmitted] = useState(false);
       const [previewImage, setPreviewImage] = useState(null); 
-      
       const pdfTargetRef = useRef(null); 
 
       useEffect(() => {
@@ -297,13 +253,11 @@
         if (!signatureData) return onToast('서명란에 서명해주세요.', 'error');
         
         setIsSubmitting(true);
-        
         try {
           await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('submissions').add({
             formId, studentGrade, studentName, parentName, parentRelation, consentStatus, signatureData, createdAt: Date.now()
           });
 
-          // 학부모 화면 백그라운드 GAS 드라이브 업로드 시도
           const gasUrl = form.gasUrl || '';
           const folderId = form.driveFolderId || '';
 
@@ -322,7 +276,6 @@
               console.error("GAS 백그라운드 업로드 실패:", e);
             }
           }
-          
           setSubmitted(true); 
           window.scrollTo(0, 0);
         } catch (error) { 
@@ -335,12 +288,8 @@
       const closeWindow = () => {
         window.open('', '_self', '');
         window.close();
-        if (typeof WeixinJSBridge !== "undefined") {
-            WeixinJSBridge.call('closeWindow');
-        }
-        setTimeout(() => {
-            onToast('브라우저 설정상 창이 자동으로 닫히지 않을 수 있습니다. 창을 직접 닫아주세요.', 'error');
-        }, 500);
+        if (typeof WeixinJSBridge !== "undefined") WeixinJSBridge.call('closeWindow');
+        setTimeout(() => { onToast('브라우저 설정상 창이 자동으로 닫히지 않을 수 있습니다. 창을 직접 닫아주세요.', 'error'); }, 500);
       };
 
       if (loading) return <div className="min-h-screen bg-slate-50 flex justify-center items-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div></div>;
@@ -362,11 +311,9 @@
           <div className="bg-white p-10 rounded-3xl shadow-xl max-w-sm w-full text-center">
             <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6"><Icon name="CheckCircle2" size={50} className="text-green-600" /></div>
             <h2 className="text-2xl font-black text-slate-800 mb-4">제출 완료</h2>
-            
             <p className="text-slate-700 font-bold mb-10 text-lg leading-relaxed bg-slate-50 p-5 rounded-xl border border-slate-100">
               제출이 완료되었습니다.<br/>협조해 주셔서 정말 감사드립니다~^^ 🎉
             </p>
-
             <button onClick={closeWindow} className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-4 rounded-xl shadow-md transition-colors text-lg flex items-center justify-center gap-2">
               <Icon name="LogOut" size={20}/> 창닫고 나가기
             </button>
@@ -391,15 +338,8 @@
               <div className="p-6 bg-slate-800 text-white text-center"><h2 className="text-2xl font-black leading-snug">{form.title}</h2></div>
               {form.imageData && (
                 <div className="p-5 bg-slate-50 border-t flex flex-col items-center">
-                  <p className="text-sm font-bold text-blue-600 mb-3 flex items-center gap-1 animate-pulse">
-                    <Icon name="ZoomIn" size={18}/> 안내장 이미지를 누르면 크게 확대됩니다!
-                  </p>
-                  <img 
-                    src={form.imageData} 
-                    alt="안내장" 
-                    className="w-full rounded-xl border border-slate-300 shadow-md cursor-pointer hover:opacity-90 transition-all" 
-                    onClick={() => setPreviewImage(form.imageData)}
-                  />
+                  <p className="text-sm font-bold text-blue-600 mb-3 flex items-center gap-1 animate-pulse"><Icon name="ZoomIn" size={18}/> 안내장 이미지를 누르면 크게 확대됩니다!</p>
+                  <img src={form.imageData} alt="안내장" className="w-full rounded-xl border border-slate-300 shadow-md cursor-pointer hover:opacity-90 transition-all" onClick={() => setPreviewImage(form.imageData)} />
                 </div>
               )}
             </section>
@@ -428,7 +368,6 @@
                     </select>
                     <input type="text" value={studentName} onChange={e=>setStudentName(e.target.value)} placeholder="학생 이름" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 font-bold text-lg outline-none" />
                   </div>
-                  
                   <div className="flex gap-3">
                     <select value={parentRelation} onChange={e=>setParentRelation(e.target.value)} className="w-[100px] px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 font-bold text-lg outline-none appearance-none shrink-0">
                       {['부', '모', '조부', '조모', '외조부', '외조모', '친척', '후견인', '보호자'].map(r => <option key={r} value={r}>{r}</option>)}
@@ -445,10 +384,7 @@
 
               <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-5 px-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-xl shadow-blue-600/30 text-xl">
                 {isSubmitting ? (
-                   <span className="flex items-center gap-2">
-                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> 
-                     제출 및 PDF 변환 중...
-                   </span>
+                   <span className="flex items-center gap-2"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>제출 및 PDF 변환 중...</span>
                 ) : (
                    <span className="flex items-center gap-2"><Icon name="Save" size={24} /> 동의서 학교로 전송하기</span>
                 )}
@@ -456,29 +392,23 @@
             </form>
           </main>
 
-          {/* 학부모용 안내장 원본 보기 모달 */}
           {previewImage && (
             <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[200] p-4 md:p-8" onClick={()=>setPreviewImage(null)}>
                <div className="relative w-full max-w-4xl max-h-[95vh] overflow-y-auto bg-white rounded-2xl p-2" onClick={e=>e.stopPropagation()}>
-                  <button onClick={()=>setPreviewImage(null)} className="absolute top-4 right-4 bg-slate-800 hover:bg-slate-900 text-white rounded-full p-2 shadow-lg z-10 transition-colors">
-                    <Icon name="X" size={24}/>
-                  </button>
+                  <button onClick={()=>setPreviewImage(null)} className="absolute top-4 right-4 bg-slate-800 hover:bg-slate-900 text-white rounded-full p-2 shadow-lg z-10 transition-colors"><Icon name="X" size={24}/></button>
                   <img src={previewImage} className="w-full h-auto rounded-xl" alt="안내장 원본 확대"/>
                </div>
             </div>
           )}
 
-          {/* 구글 드라이브 업로드를 위한 숨김 레이아웃 영역 */}
           <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
             <div ref={pdfTargetRef} style={{ width: '210mm', height: '296mm', padding: '15mm', backgroundColor: 'white', color: 'black', fontFamily: 'sans-serif', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
               <div style={{ textAlign: 'center', borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '10px', flexShrink: 0 }}>
                 <h1 style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>{form.title}</h1>
               </div>
-              
               <div style={{ flex: '1 1 auto', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', minHeight: '80mm', maxHeight: '130mm', marginBottom: '10px' }}>
                 <img src={form.imageData} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} alt="안내장" />
               </div>
-              
               <div style={{ borderTop: '2px solid black', paddingTop: '15px', flexShrink: 0 }}>
                 <p style={{ fontSize: '18px', marginBottom: '15px' }}>
                   상기 내용에 <strong style={{ textDecoration: 'underline', color: form?.responseType === 'participate' ? (consentStatus === '참여함' ? '#1d4ed8' : '#b91c1c') : form?.responseType === 'custom' ? (consentStatus === form.customOpt1 ? '#1d4ed8' : '#b91c1c') : (consentStatus === '동의함' ? '#1d4ed8' : '#b91c1c') }}>{consentStatus}</strong>.
@@ -506,23 +436,16 @@
               </div>
             </div>
           </div>
-
         </div>
       );
     };
 
-    // --- 6. 교사 관리자 화면 ---
     const TeacherView = ({ user, onToast }) => {
       const [currentTab, setCurrentTab] = useState('forms');
       const [forms, setForms] = useState([]);
       const [submissions, setSubmissions] = useState([]);
       const [contacts, setContacts] = useState([]);
-      // 환경설정 상태 관리
-      const [settings, setSettings] = useState({ 
-        smsApiKey: '', smsApiSecret: '', senderPhone: '033-672-4268',
-        gasUrl: '', driveFolderId: ''
-      });
-
+      const [settings, setSettings] = useState({ smsApiKey: '', smsApiSecret: '', senderPhone: '033-672-4268', gasUrl: '', driveFolderId: '' });
       const [selectedFormId, setSelectedFormId] = useState('');
       const [viewMode, setViewMode] = useState('status');
 
@@ -558,10 +481,7 @@
       const NavButton = ({ id, icon, label }) => {
         const isActive = currentTab === id;
         return (
-          <button 
-            onClick={() => setCurrentTab(id)} 
-            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all font-bold text-sm ${isActive ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}
-          >
+          <button onClick={() => setCurrentTab(id)} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all font-bold text-sm ${isActive ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}>
             <Icon name={icon} size={20} className={isActive ? 'text-blue-600' : 'text-slate-400'}/> {label}
           </button>
         )
@@ -599,17 +519,14 @@
       );
     };
 
-    // --- 하위 탭: 안내장 등록 및 목록 ---
     const TeacherFormsTab = ({ db, appId, user, forms, settings, onToast, goToResults }) => {
       const [title, setTitle] = useState('');
       const [image, setImage] = useState(null);
       const [driveLink, setDriveLink] = useState('');
       const [isUploading, setIsUploading] = useState(false);
-      
       const [responseType, setResponseType] = useState('agree');
       const [customOpt1, setCustomOpt1] = useState('');
       const [customOpt2, setCustomOpt2] = useState('');
-
       const [previewImage, setPreviewImage] = useState(null);
 
       const handleImageChange = async (e) => {
@@ -639,9 +556,7 @@
 
       const toggleStatus = async (formId, currentStatus) => {
         try {
-          await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('forms').doc(formId).update({
-            isClosed: !currentStatus
-          });
+          await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('forms').doc(formId).update({ isClosed: !currentStatus });
           onToast(currentStatus ? '안내장이 다시 오픈되었습니다.' : '안내장이 마감처리 되었습니다.');
         } catch (e) { onToast('상태 변경 오류', 'error'); }
       };
@@ -652,14 +567,10 @@
             await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('forms').doc(formId).delete();
             const subsSnapshot = await db.collection('artifacts').doc(appId).collection('public').doc('data').collection('submissions').where('formId', '==', formId).get();
             const batch = db.batch();
-            subsSnapshot.forEach(doc => {
-              batch.delete(doc.ref);
-            });
+            subsSnapshot.forEach(doc => { batch.delete(doc.ref); });
             await batch.commit();
             onToast('안내장과 관련 데이터가 모두 삭제되었습니다.');
-          } catch (error) {
-            onToast('삭제 중 오류가 발생했습니다.', 'error');
-          }
+          } catch (error) { onToast('삭제 중 오류가 발생했습니다.', 'error'); }
         }
       };
 
@@ -676,7 +587,6 @@
             <h2 className="text-xl font-bold text-slate-800 mb-6">새 안내장 등록</h2>
             <div className="space-y-6">
               <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="안내장 제목 입력" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold outline-none text-lg" />
-              
               <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl">
                 <p className="text-sm font-bold text-slate-700 mb-3">응답 선택지 유형</p>
                 <div className="flex gap-4">
@@ -691,13 +601,11 @@
                   </div>
                 )}
               </div>
-
               <div className="px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl">
                 <p className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><Icon name="FolderUp" size={16}/> 취합 서류 보관용 구글 드라이브 링크 (선택사항)</p>
                 <input type="text" value={driveLink} onChange={e => setDriveLink(e.target.value)} placeholder="예: https://drive.google.com/drive/folders/..." className="w-full px-4 py-3 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono" />
                 <p className="text-xs text-slate-400 mt-2">* 여기에 공유 드라이브 링크를 넣어두시면, 나중에 '결과 확인' 탭에서 클릭 한 번으로 폴더를 열 수 있습니다.</p>
               </div>
-
               <div>
                 <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-blue-50 transition-colors">
                   <span className="text-sm font-bold text-slate-500 flex items-center gap-2"><Icon name="FileText" size={20}/> 클릭하여 안내장 이미지(JPG) 첨부</span>
@@ -711,7 +619,6 @@
             </div>
           </section>
 
-          {/* 등록된 안내장 목록 */}
           <section className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
             <div className="p-6 border-b border-slate-100 bg-slate-50">
                <h2 className="text-xl font-bold text-slate-800">등록된 안내장 목록</h2>
@@ -740,7 +647,7 @@
                     <button onClick={() => goToResults(form.id, 'original')} className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-bold rounded-lg whitespace-nowrap transition-colors">
                       원본확인
                     </button>
-                    <button onClick={() => handleDeleteForm(form.id)} className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-500 text-sm font-bold rounded-lg transition-colors flex items-center justify-center shrink-0" title="안내장 및 데이터 전체 삭제">
+                    <button onClick={() => handleDeleteForm(form.id)} className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-500 text-sm font-bold rounded-lg transition-colors flex items-center justify-center shrink-0" title="안내장 삭제">
                       <Icon name="Trash2" size={18}/>
                     </button>
                   </div>
@@ -761,7 +668,6 @@
       );
     };
 
-    // --- 하위 탭: 학부모 주소록 ---
     const TeacherContactsTab = ({ db, appId, user, contacts, onToast }) => {
       const [studentGrade, setStudentGrade] = useState('');
       const [studentClass, setStudentClass] = useState('');
@@ -775,12 +681,7 @@
         if (!studentGrade || !studentClass || !studentName || !parentName || !phone) return onToast('모든 항목을 입력해주세요.', 'error');
         try {
           await db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('contacts').add({ 
-            studentGrade: Number(studentGrade), 
-            studentClass: String(studentClass), 
-            studentName, 
-            parentName, 
-            phone, 
-            createdAt: Date.now() 
+            studentGrade: Number(studentGrade), studentClass: String(studentClass), studentName, parentName, phone, createdAt: Date.now() 
           });
           onToast('주소록에 추가되었습니다.');
           setStudentGrade(''); setStudentClass(''); setStudentName(''); setParentName(''); setPhone('');
@@ -811,27 +712,19 @@
             const workbook = XLSX.read(data, {type: 'array'});
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
             const json = XLSX.utils.sheet_to_json(worksheet);
-            
             let count = 0;
             const batch = db.batch();
             json.forEach(row => {
                if(row.학년 && row.반 && row.학생성명 && row.학부모성명 && row.연락처) {
                   const docRef = db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('contacts').doc();
-                  batch.set(docRef, { 
-                    studentGrade: Number(row.학년), 
-                    studentClass: String(row.반), 
-                    studentName: String(row.학생성명), 
-                    parentName: String(row.학부모성명), 
-                    phone: String(row.연락처), 
-                    createdAt: Date.now() 
-                  });
+                  batch.set(docRef, { studentGrade: Number(row.학년), studentClass: String(row.반), studentName: String(row.학생성명), parentName: String(row.학부모성명), phone: String(row.연락처), createdAt: Date.now() });
                   count++;
                }
             });
             await batch.commit();
             onToast(`${count}명의 연락처가 일괄 등록되었습니다.`);
           } catch(err) {
-            onToast('엑셀 파일 분석 오류가 발생했습니다. 양식을 확인해주세요.', 'error');
+            onToast('엑셀 파일 분석 오류가 발생했습니다.', 'error');
           }
           if(fileInputRef.current) fileInputRef.current.value = '';
         };
@@ -909,15 +802,12 @@
       );
     };
 
-    // --- 하위 탭: 환경설정 (새로운 GAS 방식 적용) ---
     const TeacherSettingsTab = ({ db, appId, user, settings, onToast }) => {
       const [smsApiKey, setSmsApiKey] = useState(settings.smsApiKey || '');
       const [smsApiSecret, setSmsApiSecret] = useState(settings.smsApiSecret || '');
       const [senderPhone, setSenderPhone] = useState(settings.senderPhone || '033-672-4268');
-      
       const [gasUrl, setGasUrl] = useState(settings.gasUrl || '');
       const [driveFolderId, setDriveFolderId] = useState(settings.driveFolderId || '');
-
       const [isSaving, setIsSaving] = useState(false);
 
       const handleSaveSettings = async () => {
@@ -933,7 +823,6 @@
 
       return (
         <div className="max-w-3xl mx-auto animate-fade-in-up space-y-6 pb-20">
-          
           <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-10">
             <h2 className="text-2xl font-black text-slate-800 mb-8 flex items-center gap-2"><Icon name="FolderUp" className="text-blue-600"/> 구글 드라이브 자동 업로드 연동</h2>
             <div className="space-y-6">
@@ -969,7 +858,6 @@
               </div>
             </div>
           </div>
-
           <button onClick={handleSaveSettings} disabled={isSaving} className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-5 rounded-xl flex items-center justify-center gap-2 transition-all text-lg shadow-lg">
              <Icon name="Save" size={20}/> {isSaving ? '저장 중...' : '모든 설정 저장하기'}
           </button>
@@ -977,7 +865,6 @@
       );
     };
 
-    // --- 하위 탭: 취합 결과 ---
     const TeacherResultsTab = ({ forms, submissions, selectedFormId, setSelectedFormId, viewMode, setViewMode, onToast, settings }) => {
       const [selectedSub, setSelectedSub] = useState(null);
       const [isUploadingDrive, setIsUploadingDrive] = useState(false);
@@ -988,7 +875,6 @@
 
       const downloadExcel = () => {
         if (currentSubs.length === 0) return onToast('제출된 데이터가 없습니다.', 'error');
-        
         const data = currentSubs.map(s => ({
           "제출일시": formatDate(s.createdAt),
           "학년": s.studentGrade,
@@ -997,20 +883,15 @@
           "학부모이름": s.parentName,
           "응답결과": s.consentStatus
         }));
-        
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "제출결과");
-        
         XLSX.writeFile(wb, `${currentForm.title}_제출결과.xlsx`);
         onToast('엑셀 파일이 성공적으로 다운로드되었습니다.');
       };
 
-      // 교사 화면에서도 최신 환경설정 값을 가져와 앱스 스크립트로 업로드 실행
       const handleUploadToDrive = async () => {
         if (!selectedSub || !currentForm) return onToast('선택된 데이터가 없습니다.', 'error');
-        
-        // 폼을 생성할 때 저장된 값이 없으면, 현재 환경설정에 있는 최신 값을 가져와서 시도합니다.
         const gasUrlToUse = currentForm.gasUrl || settings.gasUrl;
         const folderIdToUse = currentForm.driveFolderId || settings.driveFolderId;
 
@@ -1066,7 +947,6 @@
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="p-6 bg-slate-50 border-b flex justify-between items-center flex-wrap gap-4">
                  <span className="font-bold text-slate-700">전체 제출: <span className="text-blue-600 text-lg">{currentSubs.length}</span>명</span>
-                 
                  <button onClick={downloadExcel} className="px-5 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-sm flex items-center gap-2 shadow-sm transition-colors">
                     <Icon name="Download" size={18}/> 엑셀파일로 다운받기
                  </button>
@@ -1107,7 +987,6 @@
                   <button key={s.id} onClick={() => setSelectedSub(s)} className={`w-full text-left px-4 py-4 rounded-2xl text-sm font-bold mb-1 transition-colors ${selectedSub?.id === s.id ? 'bg-slate-800 text-white shadow-md' : 'hover:bg-slate-50 text-slate-700'}`}>
                     <div className="flex justify-between items-center">
                        <span>{s.studentName}</span>
-                       {/* 선택된 상태가 아닐 때만 색상이 나오게 하여 가독성 확보 */}
                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                          selectedSub?.id === s.id 
                            ? 'bg-white/20 text-white' 
@@ -1212,12 +1091,10 @@
               </div>
             </div>
           )}
-
         </div>
       );
     };
 
-    // --- 7. 최상위 앱 흐름 제어 ---
     const MainApp = () => {
       const [user, setUser] = useState(null);
       const [isTeacher, setIsTeacher] = useState(false);
@@ -1270,7 +1147,6 @@
       );
     };
 
-    // --- 앱 렌더링 ---
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<MainApp />);
   </script>
